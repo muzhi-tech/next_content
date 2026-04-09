@@ -8,7 +8,9 @@ export interface ApiConfig {
   apiUrl: string;
   apiKey: string;
   modelName: string;
+  type: 'text' | 'image';
   isDefault: boolean;
+  isDefaultImage: boolean;
 }
 
 interface ApiConfigSelectorProps {
@@ -28,6 +30,8 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
     apiKey: "",
     modelName: "gpt-4o-mini",
     isDefault: false,
+    type: "text" as "text" | "image",
+    isDefaultImage: false,
   });
   const [savingConfig, setSavingConfig] = useState(false);
 
@@ -73,7 +77,7 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
       await loadConfigs();
       setShowConfigForm(false);
       setEditingConfig(null);
-      setConfigForm({ name: "", apiUrl: "", apiKey: "", modelName: "gpt-4o-mini", isDefault: false });
+      setConfigForm({ name: "", apiUrl: "", apiKey: "", modelName: "gpt-4o-mini", isDefault: false, type: "text", isDefaultImage: false });
     } catch (err) {
       console.error("Failed to save config:", err);
     } finally {
@@ -99,6 +103,8 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
       apiKey: config.apiKey,
       modelName: config.modelName,
       isDefault: config.isDefault,
+      type: config.type || "text",
+      isDefaultImage: config.isDefaultImage,
     });
     setShowConfigForm(true);
   };
@@ -113,7 +119,7 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
           onClick={() => {
             setShowConfigForm(true);
             setEditingConfig(null);
-            setConfigForm({ name: "", apiUrl: "", apiKey: "", modelName: "gpt-4o-mini", isDefault: false });
+            setConfigForm({ name: "", apiUrl: "", apiKey: "", modelName: "gpt-4o-mini", isDefault: false, type: "text", isDefaultImage: false });
           }}
           className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-purple-700"
         >
@@ -165,15 +171,54 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
                 className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id={`isDefault-${formId}`}
-                checked={configForm.isDefault}
-                onChange={(e) => setConfigForm({ ...configForm, isDefault: e.target.checked })}
-                className="w-4 h-4 text-purple-600 rounded"
-              />
-              <label htmlFor={`isDefault-${formId}`} className="text-sm text-gray-600">设为默认配置</label>
+            <div>
+              <label className="text-sm text-gray-600 mb-1 block">配置类型</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`type-${formId}`}
+                    value="text"
+                    checked={configForm.type === "text"}
+                    onChange={() => setConfigForm({ ...configForm, type: "text" })}
+                    className="w-4 h-4 text-purple-600"
+                  />
+                  <span className="text-sm text-gray-700">文本模型</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name={`type-${formId}`}
+                    value="image"
+                    checked={configForm.type === "image"}
+                    onChange={() => setConfigForm({ ...configForm, type: "image" })}
+                    className="w-4 h-4 text-purple-600"
+                  />
+                  <span className="text-sm text-gray-700">绘图模型</span>
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id={`isDefault-${formId}`}
+                  checked={configForm.isDefault}
+                  onChange={(e) => setConfigForm({ ...configForm, isDefault: e.target.checked })}
+                  className="w-4 h-4 text-purple-600 rounded"
+                />
+                <label htmlFor={`isDefault-${formId}`} className="text-sm text-gray-600">默认文本模型</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id={`isDefaultImage-${formId}`}
+                  checked={configForm.isDefaultImage}
+                  onChange={(e) => setConfigForm({ ...configForm, isDefaultImage: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+                <label htmlFor={`isDefaultImage-${formId}`} className="text-sm text-gray-600">默认绘图模型</label>
+              </div>
             </div>
             <div className="flex gap-3 pt-2">
               <button
@@ -211,8 +256,16 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold text-gray-900">{config.name}</h4>
+                    {config.type === "image" ? (
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">绘图</span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">文本</span>
+                    )}
                     {config.isDefault && (
-                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">默认</span>
+                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">默认文本</span>
+                    )}
+                    {config.isDefaultImage && (
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">默认绘图</span>
                     )}
                   </div>
                   <p className="text-sm text-gray-500 mt-1">{config.apiUrl}</p>

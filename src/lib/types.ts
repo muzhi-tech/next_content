@@ -42,13 +42,17 @@ export const PLATFORMS: { id: Platform; name: string; icon: string }[] = [
 ];
 
 // API 配置
+export type ApiConfigType = 'text' | 'image';
+
 export interface ApiConfig {
   id: string;
   name: string;
   apiUrl: string;
   apiKey: string;
   modelName: string;
+  type: ApiConfigType;
   isDefault: boolean;
+  isDefaultImage: boolean;
   createdAt: number;
   updatedAt: number;
 }

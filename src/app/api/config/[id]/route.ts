@@ -7,7 +7,7 @@ export async function PUT(
 ) {
   try {
     const body = await request.json();
-    const { name, apiUrl, apiKey, modelName, isDefault } = body;
+    const { name, apiUrl, apiKey, modelName, isDefault, type, isDefaultImage } = body;
 
     const config = await updateApiConfig(params.id, {
       name,
@@ -15,6 +15,8 @@ export async function PUT(
       apiKey,
       modelName,
       isDefault,
+      type,
+      isDefaultImage,
     });
 
     if (!config) {

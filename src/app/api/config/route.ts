@@ -18,7 +18,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name, apiUrl, apiKey, modelName, isDefault } = body;
+    const { name, apiUrl, apiKey, modelName, isDefault, type, isDefaultImage } = body;
 
     if (!name || !apiUrl || !apiKey || !modelName) {
       return NextResponse.json(
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const config = await createApiConfig({ name, apiUrl, apiKey, modelName, isDefault });
+    const config = await createApiConfig({ name, apiUrl, apiKey, modelName, isDefault, type, isDefaultImage });
     return NextResponse.json({ code: 0, msg: "创建配置成功", data: config });
   } catch (error) {
     console.error("Error creating API config:", error);

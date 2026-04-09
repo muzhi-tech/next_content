@@ -77,7 +77,9 @@ function initSchema(db: Database.Database): void {
       apiUrl TEXT NOT NULL,
       apiKey TEXT NOT NULL,
       modelName TEXT NOT NULL,
+      type TEXT DEFAULT 'text',
       isDefault INTEGER DEFAULT 0,
+      isDefaultImage INTEGER DEFAULT 0,
       createdAt INTEGER NOT NULL,
       updatedAt INTEGER NOT NULL
     );
@@ -198,6 +200,15 @@ function initSchema(db: Database.Database): void {
   }
   if (!catCols.includes('ingestTopN')) {
     db.exec("ALTER TABLE categories ADD COLUMN ingestTopN INTEGER DEFAULT 5");
+  }
+
+  // Migrate: add new columns to existing api_configs table
+  const cfgCols = (db.prepare("PRAGMA table_info(api_configs)").all() as any[]).map(c => c.name);
+  if (!cfgCols.includes('type')) {
+    db.exec("ALTER TABLE api_configs ADD COLUMN type TEXT DEFAULT 'text'");
+  }
+  if (!cfgCols.includes('isDefaultImage')) {
+    db.exec("ALTER TABLE api_configs ADD COLUMN isDefaultImage INTEGER DEFAULT 0");
   }
 }
 
@@ -390,15 +401,35 @@ export async function deleteArticlesByKeyword(keywordId: string): Promise<void> 
 
 export async function getApiConfigs(): Promise<ApiConfig[]> {
   const db = getDB();
-  return db.prepare("SELECT * FROM api_configs").all().map((r: any) => ({ ...r, isDefault: !!r.isDefault }));
+  return db.prepare("SELECT * FROM api_configs").all().map((r: any) => ({
+    ...r,
+    isDefault: !!r.isDefault,
+    isDefaultImage: !!r.isDefaultImage,
+    type: r.type || 'text',
+  }));
 }
 
-export async function getDefaultApiConfig(): Promise<ApiConfig | null> {
+export async function getDefaultApiConfig(type?: 'text' | 'image'): Promise<ApiConfig | null> {
   const db = getDB();
-  const row = db.prepare("SELECT * FROM api_configs WHERE isDefault = 1 LIMIT 1").get() as any;
-  if (row) return { ...row, isDefault: true };
+  let row: any;
+
+  if (type === 'image') {
+    // Look for default image config first
+    row = db.prepare("SELECT * FROM api_configs WHERE isDefaultImage = 1 LIMIT 1").get();
+    if (row) return { ...row, isDefault: !!row.isDefault, isDefaultImage: true, type: row.type || 'image' };
+    // Fallback to first image config
+    row = db.prepare("SELECT * FROM api_configs WHERE type = 'image' LIMIT 1").get();
+    if (row) return { ...row, isDefault: !!row.isDefault, isDefaultImage: !!row.isDefaultImage, type: 'image' };
+    // Last resort: first config of any type
+    row = db.prepare("SELECT * FROM api_configs LIMIT 1").get();
+    return row ? { ...row, isDefault: !!row.isDefault, isDefaultImage: !!row.isDefaultImage, type: row.type || 'text' } : null;
+  }
+
+  // Default behavior for text or undefined
+  row = db.prepare("SELECT * FROM api_configs WHERE isDefault = 1 LIMIT 1").get() as any;
+  if (row) return { ...row, isDefault: true, isDefaultImage: !!row.isDefaultImage, type: row.type || 'text' };
   const first = db.prepare("SELECT * FROM api_configs LIMIT 1").get() as any;
-  return first ? { ...first, isDefault: !!first.isDefault } : null;
+  return first ? { ...first, isDefault: !!first.isDefault, isDefaultImage: !!first.isDefaultImage, type: first.type || 'text' } : null;
 }
 
 export async function createApiConfig(data: {
@@ -407,23 +438,30 @@ export async function createApiConfig(data: {
   apiKey: string;
   modelName: string;
   isDefault?: boolean;
+  type?: 'text' | 'image';
+  isDefaultImage?: boolean;
 }): Promise<ApiConfig> {
   const db = getDB();
   if (data.isDefault) {
     db.prepare("UPDATE api_configs SET isDefault = 0").run();
   }
+  if (data.isDefaultImage) {
+    db.prepare("UPDATE api_configs SET isDefaultImage = 0").run();
+  }
   const id = generateId();
   const now = Date.now();
   const isDef = data.isDefault ? 1 : 0;
+  const isDefImg = data.isDefaultImage ? 1 : 0;
+  const cfgType = data.type || 'text';
   db.prepare(
-    "INSERT INTO api_configs (id, name, apiUrl, apiKey, modelName, isDefault, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(id, data.name, data.apiUrl, data.apiKey, data.modelName, isDef, now, now);
-  return { id, name: data.name, apiUrl: data.apiUrl, apiKey: data.apiKey, modelName: data.modelName, isDefault: !!isDef, createdAt: now, updatedAt: now };
+    "INSERT INTO api_configs (id, name, apiUrl, apiKey, modelName, type, isDefault, isDefaultImage, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, data.name, data.apiUrl, data.apiKey, data.modelName, cfgType, isDef, isDefImg, now, now);
+  return { id, name: data.name, apiUrl: data.apiUrl, apiKey: data.apiKey, modelName: data.modelName, type: cfgType, isDefault: !!isDef, isDefaultImage: !!isDefImg, createdAt: now, updatedAt: now };
 }
 
 export async function updateApiConfig(
   id: string,
-  data: Partial<{ name: string; apiUrl: string; apiKey: string; modelName: string; isDefault: boolean }>
+  data: Partial<{ name: string; apiUrl: string; apiKey: string; modelName: string; isDefault: boolean; type: 'text' | 'image'; isDefaultImage: boolean }>
 ): Promise<ApiConfig | null> {
   const db = getDB();
   const existing = db.prepare("SELECT * FROM api_configs WHERE id = ?").get(id) as any;
@@ -432,19 +470,24 @@ export async function updateApiConfig(
   if (data.isDefault) {
     db.prepare("UPDATE api_configs SET isDefault = 0").run();
   }
+  if (data.isDefaultImage) {
+    db.prepare("UPDATE api_configs SET isDefaultImage = 0").run();
+  }
 
   const name = data.name !== undefined ? data.name : existing.name;
   const apiUrl = data.apiUrl !== undefined ? data.apiUrl : existing.apiUrl;
   const apiKey = data.apiKey !== undefined ? data.apiKey : existing.apiKey;
   const modelName = data.modelName !== undefined ? data.modelName : existing.modelName;
   const isDefault = data.isDefault !== undefined ? (data.isDefault ? 1 : 0) : existing.isDefault;
+  const isDefaultImage = data.isDefaultImage !== undefined ? (data.isDefaultImage ? 1 : 0) : existing.isDefaultImage;
+  const type = data.type !== undefined ? data.type : (existing.type || 'text');
   const updatedAt = Date.now();
 
   db.prepare(
-    "UPDATE api_configs SET name=?, apiUrl=?, apiKey=?, modelName=?, isDefault=?, updatedAt=? WHERE id=?"
-  ).run(name, apiUrl, apiKey, modelName, isDefault, updatedAt, id);
+    "UPDATE api_configs SET name=?, apiUrl=?, apiKey=?, modelName=?, type=?, isDefault=?, isDefaultImage=?, updatedAt=? WHERE id=?"
+  ).run(name, apiUrl, apiKey, modelName, type, isDefault, isDefaultImage, updatedAt, id);
 
-  return { id, name, apiUrl, apiKey, modelName, isDefault: !!isDefault, createdAt: existing.createdAt, updatedAt };
+  return { id, name, apiUrl, apiKey, modelName, type, isDefault: !!isDefault, isDefaultImage: !!isDefaultImage, createdAt: existing.createdAt, updatedAt };
 }
 
 export async function deleteApiConfig(id: string): Promise<boolean> {

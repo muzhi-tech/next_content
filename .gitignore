@@ -41,3 +41,17 @@ coverage/
 
 # Misc
 *.log
+
+# Embedded repos
+awesome-design-md/
+skills/
+
+# Claude
+.claude/
+
+# Data (exclude db files, keep structure)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/db.json
+data/db.sqlite

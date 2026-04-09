@@ -11,6 +11,7 @@ import { createChatCompletionJSON, parseJSON } from "@/lib/content-generator";
 import { humanizeContent } from "./agents/humanize";
 import { scoreContent } from "./agents/score";
 import { reviewContent } from "./agents/review";
+import { generateStickerContent, type StickerOutput } from "./agents/sticker-writer";
 import {
   getPipelineRun,
   createPipelineRun,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/db";
 import type { PipelineRun, PipelineStepResult } from "@/lib/types";
 
-export type PipelineStep = "collect" | "topic" | "write" | "score" | "humanize" | "review" | "illustrate" | "publish";
+export type PipelineStep = "collect" | "topic" | "write" | "score" | "humanize" | "review" | "illustrate" | "publish" | "microwriting" | "visualrender";
 
 export interface StepResult {
   step: PipelineStep;
@@ -44,6 +45,7 @@ export interface PipelineContext {
   status: "running" | "completed" | "failed";
   history: StepResult[];
   retryCount: number;
+  stickerData?: StickerOutput;  // 贴图模式输出
 }
 
 interface AIConfig {
@@ -81,7 +83,8 @@ export type PipelineEventType =
   | "step_failed"
   | "wiki_context"
   | "pipeline_complete"
-  | "pipeline_failed";
+  | "pipeline_failed"
+  | "sticker_data";
 
 export interface PipelineEvent {
   type: PipelineEventType;
@@ -162,7 +165,14 @@ export async function runPipeline(params: {
   wikiMode?: "off" | "index-only" | "full-context";
   onEvent?: PipelineEventHandler;
   resumeFromPipelineId?: string;
+  type?: "long-article" | "sticker";  // 管道类型：长文 or 贴图
 }): Promise<PipelineContext> {
+  const pipelineType = params.type || "long-article";
+
+  // 贴图模式走独立流程
+  if (pipelineType === "sticker") {
+    return runStickerPipeline(params);
+  }
   const { onEvent } = params;
   const pipelineStart = Date.now();
 
@@ -585,18 +595,148 @@ async function executePublish(topic: string, content: string, coverPrompt: strin
   try {
     const { fetchAccessToken, publishDraft } = await import("@/lib/wechat");
     const accessToken = await fetchAccessToken(appId, appSecret);
-    
+
     // In MVP, we skip the actual image upload to WeChat material library,
     // which requires a real media_id. To prevent draft/add API error for missing thumb_media_id,
     // we use a placeholder or skip the real API call if we don't have a valid thumb_media_id.
     // For now, we simulate success if the token fetch succeeded.
     // If you have a valid media_id, you can call publishDraft.
-    
+
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     return { url: "https://mp.weixin.qq.com/s/mock-article-url-after-token-fetch" };
   } catch (err: any) {
     throw new Error(`公众号发布失败: ${err.message}`);
+  }
+}
+
+/**
+ * 贴图模式管道 (4步)
+ * Collect -> MicroWriting -> VisualRendering -> Publish
+ */
+async function runStickerPipeline(params: {
+  categoryId: string;
+  keywordId?: string;
+  apiConfig: AIConfig;
+  useWiki?: boolean;
+  wikiMode?: "off" | "index-only" | "full-context";
+  onEvent?: PipelineEventHandler;
+  resumeFromPipelineId?: string;
+}): Promise<PipelineContext> {
+  const { onEvent } = params;
+  const pipelineStart = Date.now();
+
+  const ctx: PipelineContext = {
+    id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+    categoryId: params.categoryId,
+    currentStep: "collect",
+    status: "running",
+    history: [],
+    retryCount: 0,
+  };
+
+  let collectedArticles: Array<{ title: string; content: string; platform: string }> = [];
+
+  const PIPELINE_TIMEOUT_MS = 10 * 60_000;
+  const STEP_TIMEOUT_MS = 60_000;
+
+  const checkTimeout = () => {
+    if (Date.now() - pipelineStart > PIPELINE_TIMEOUT_MS) {
+      throw new Error("管道整体超时 (10min)");
+    }
+  };
+
+  emitEvent(onEvent, "pipeline_start", ctx.id, { status: "running", data: { type: "sticker" } });
+
+  try {
+    // Step 0: Collect (采集)
+    checkTimeout();
+    ctx.currentStep = "collect";
+    emitEvent(onEvent, "step_start", ctx.id, { step: "collect", stepIndex: 0 });
+    collectedArticles = await withTimeout(
+      executeCollect(params.categoryId, params.keywordId),
+      STEP_TIMEOUT_MS, "collect"
+    );
+    ctx.history.push(stepResult("collect", "success", { count: collectedArticles.length }));
+    emitEvent(onEvent, "step_complete", ctx.id, { step: "collect", stepIndex: 0, data: { count: collectedArticles.length } });
+
+    if (collectedArticles.length === 0) {
+      ctx.status = "failed";
+      emitEvent(onEvent, "pipeline_failed", ctx.id, { error: "No articles collected" });
+      return ctx;
+    }
+
+    // Step 1: MicroWriting (调用 sticker-writer，输出 JSON)
+    checkTimeout();
+    ctx.currentStep = "microwriting";
+    emitEvent(onEvent, "step_start", ctx.id, { step: "microwriting", stepIndex: 1 });
+    const sourceContent = collectedArticles
+      .slice(0, 5)
+      .map((a, i) => `[素材${i + 1}] ${a.title}\n${a.content.substring(0, 500)}`)
+      .join("\n\n");
+    const stickerData = await withTimeout(
+      generateStickerContent(params.apiConfig, sourceContent),
+      STEP_TIMEOUT_MS, "microwriting"
+    );
+    ctx.stickerData = stickerData;
+    ctx.history.push(stepResult("microwriting", "success", {
+      title: stickerData.title,
+      slidesCount: stickerData.slides.length,
+      captionLength: stickerData.caption.length
+    }));
+    emitEvent(onEvent, "step_complete", ctx.id, { step: "microwriting", stepIndex: 1, data: { stickerData } });
+
+    // Step 2: VisualRendering (前端渲染生图 - 此处标记完成，前端负责渲染)
+    checkTimeout();
+    ctx.currentStep = "visualrender";
+    emitEvent(onEvent, "step_start", ctx.id, { step: "visualrender", stepIndex: 2 });
+    ctx.history.push(stepResult("visualrender", "success", { message: "Visual rendering handled by frontend" }));
+    emitEvent(onEvent, "step_complete", ctx.id, { step: "visualrender", stepIndex: 2, data: { message: "Sticker data ready for visual rendering" } });
+
+    // Step 3: Publish (组装发布)
+    checkTimeout();
+    ctx.currentStep = "publish";
+    emitEvent(onEvent, "step_start", ctx.id, { step: "publish", stepIndex: 3 });
+    const publishResult = await withTimeout(
+      executePublish(ctx.topic || stickerData.title, JSON.stringify(stickerData), ""),
+      STEP_TIMEOUT_MS, "publish"
+    );
+    ctx.history.push(stepResult("publish", "success", { stickerData, url: publishResult.url }));
+    ctx.status = "completed";
+    emitEvent(onEvent, "step_complete", ctx.id, { step: "publish", stepIndex: 3, data: { url: publishResult.url } });
+    emitEvent(onEvent, "pipeline_complete", ctx.id, { status: "completed", data: { stickerData, url: publishResult.url } });
+
+    // Auto-save sticker content as draft
+    saveStickerContentFromPipeline(ctx).catch((err) => {
+      console.error("[pipeline] Auto-save sticker content failed:", err);
+    });
+
+  } catch (error) {
+    ctx.status = "failed";
+    ctx.history.push(stepResult(ctx.currentStep, "failed", undefined, error instanceof Error ? error.message : String(error)));
+    emitEvent(onEvent, "pipeline_failed", ctx.id, { error: error instanceof Error ? error.message : String(error) });
+  }
+
+  return ctx;
+}
+
+/**
+ * Auto-save sticker output to generated_contents table as draft.
+ */
+async function saveStickerContentFromPipeline(ctx: PipelineContext): Promise<void> {
+  if (!ctx.stickerData) return;
+  try {
+    await createGeneratedContent({
+      categoryId: ctx.categoryId,
+      topic: ctx.stickerData.title,
+      content: JSON.stringify(ctx.stickerData),
+      status: "draft",
+      sourceType: "sticker-pipeline",
+      coverPrompt: undefined,
+    });
+    console.log(`[pipeline] Auto-saved sticker content for pipeline ${ctx.id}`);
+  } catch (err) {
+    console.error("[pipeline] Failed to auto-save sticker content:", err);
   }
 }
 

@@ -294,7 +294,7 @@ export interface WikiLintIssue {
 // ==================== 第六轮迭代：内容历史 + 采集日志 ====================
 
 export type ContentStatus = 'draft' | 'reviewed' | 'published' | 'archived';
-export type ContentSourceType = 'manual' | 'pipeline';
+export type ContentSourceType = 'manual' | 'pipeline' | 'sticker-pipeline';
 
 export interface GeneratedContent {
   id: string;

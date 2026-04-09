@@ -13,7 +13,10 @@
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.8.0",
+    "highlight.js": "^11.11.1",
     "lucide-react": "^0.378.0",
+    "marked": "^18.0.0",
+    "marked-highlight": "^2.2.4",
     "next": "14.2.3",
     "node-cron": "^4.2.1",
     "react": "^18",
@@ -22,6 +25,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@types/marked": "^6.0.0",
     "@types/node": "^20",
     "@types/node-cron": "^3.0.11",
     "@types/react": "^18",

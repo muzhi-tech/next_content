@@ -58,7 +58,18 @@ interface PipelineStatus {
     steps: PipelineStep[];
     createdAt: string;
     updatedAt: string;
+    error?: string;
   };
+}
+
+interface AgentStat {
+  key: string;
+  name: string;
+  triggered: number;
+  success: number;
+  failed: number;
+  successRate: number;
+  avgDuration: number;
 }
 
 // ==================== Constants ====================
@@ -355,6 +366,7 @@ function PipelineSteps({ steps, currentStepIndex, isRunning }: { steps: Pipeline
 export default function AnalyticsTab() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus | null>(null);
+  const [agentStats, setAgentStats] = useState<AgentStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -405,16 +417,30 @@ export default function AnalyticsTab() {
     }
   }, []);
 
+  const loadAgentStats = useCallback(async () => {
+    try {
+      const res = await fetch("/api/analytics/agent-stats");
+      const data = await res.json();
+      if (data.code === 0) {
+        setAgentStats(data.data);
+      } else {
+        setAgentStats([]);
+      }
+    } catch {
+      setAgentStats([]);
+    }
+  }, []);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     setError(null);
-    await Promise.all([loadDashboard(), loadPipelineStatus()]);
+    await Promise.all([loadDashboard(), loadPipelineStatus(), loadAgentStats()]);
     setLoading(false);
-  }, [loadDashboard, loadPipelineStatus]);
+  }, [loadDashboard, loadPipelineStatus, loadAgentStats]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadDashboard(), loadPipelineStatus()]);
+    await Promise.all([loadDashboard(), loadPipelineStatus(), loadAgentStats()]);
     setRefreshing(false);
   };
 
@@ -625,6 +651,42 @@ export default function AnalyticsTab() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Agent 执行统计 */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+        <h4 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+          <BarChart3 size={16} className="text-blue-500" />
+          Agent 执行统计
+        </h4>
+        {agentStats.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-gray-400">
+            <BarChart3 size={32} className="mb-2 opacity-50" />
+            <p className="text-sm">暂无 Agent 执行数据</p>
+            <p className="text-xs mt-1">执行管道后将显示统计信息</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {agentStats.map((stat) => (
+              <div key={stat.key} className="flex items-center gap-3">
+                <span className="text-xs text-gray-600 w-16">{stat.name}</span>
+                <div className="flex-1 h-4 bg-gray-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${stat.successRate}%`,
+                      backgroundColor: stat.successRate >= 80 ? "#10B981" : stat.successRate >= 50 ? "#F59E0B" : "#EF4444",
+                    }}
+                  />
+                </div>
+                <span className="text-xs font-medium text-gray-800 w-10">{stat.successRate}%</span>
+                <span className="text-xs text-gray-400 w-20">
+                  {stat.avgDuration > 0 ? `平均 ${stat.avgDuration}s` : "-"}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>

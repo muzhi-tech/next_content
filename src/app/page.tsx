@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { Folder, Settings, FileText, LayoutList, Plus, Sparkles, ImageIcon, PenLine, UserCircle, BookOpen, Wrench, Archive, BarChart3 } from "lucide-react";
+import { Folder, Settings, FileText, LayoutList, Plus, Sparkles, ImageIcon, PenLine, UserCircle, BookOpen, Wrench, Archive, BarChart3, LayoutTemplate } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 import LoadingState from "@/components/LoadingState";
 import ContentTab from "@/components/ContentTab";
@@ -12,6 +12,7 @@ import AccountSpaceTab from "@/components/AccountSpaceTab";
 import WikiTab from "@/components/WikiTab";
 import SystemSettingsTab from "@/components/SystemSettingsTab";
 import ContentHistoryTab from "@/components/ContentHistoryTab";
+import TypesetTab from "@/components/TypesetTab";
 import AnalyticsTab from "@/components/AnalyticsTab";
 
 interface Category {
@@ -19,13 +20,14 @@ interface Category {
   name: string;
 }
 
-type MainNav = "content" | "writing" | "image" | "report" | "wiki" | "account-space" | "content-history" | "settings" | "system-settings" | "analytics";
+type MainNav = "content" | "writing" | "image" | "report" | "wiki" | "account-space" | "content-history" | "settings" | "system-settings" | "analytics" | "typeset";
 
 const mainNavItems = [
   { id: "content" as MainNav, name: "采集内容", icon: <LayoutList size={18} /> },
   { id: "analytics" as MainNav, name: "数据分析", icon: <BarChart3 size={18} /> },
   { id: "writing" as MainNav, name: "AI写文", icon: <PenLine size={18} /> },
   { id: "image" as MainNav, name: "AI作图", icon: <ImageIcon size={18} /> },
+  { id: "typeset" as MainNav, name: "公众号排版", icon: <LayoutTemplate size={18} /> },
   { id: "report" as MainNav, name: "选题分析与报告", icon: <FileText size={18} /> },
   { id: "wiki" as MainNav, name: "Wiki知识库", icon: <BookOpen size={18} /> },
   { id: "account-space" as MainNav, name: "账号空间", icon: <UserCircle size={18} /> },
@@ -139,6 +141,7 @@ export default function Dashboard() {
           {activeNav === "analytics" && <AnalyticsTab />}
           {activeNav === "writing" && <WritingTab categoryId={activeCategory} />}
           {activeNav === "image" && <ImageTab categoryId={activeCategory} />}
+          {activeNav === "typeset" && <TypesetTab />}
           {activeNav === "report" && <ReportTab categoryId={activeCategory} />}
           {activeNav === "wiki" && <WikiTab categoryId={activeCategory} />}
           {activeNav === "account-space" && <AccountSpaceTab categoryId={activeCategory} />}

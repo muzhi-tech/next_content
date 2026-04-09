@@ -172,52 +172,53 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
               />
             </div>
             <div>
-              <label className="text-sm text-gray-600 mb-1 block">配置类型</label>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <label className="text-sm text-gray-600 mb-1 block">用途（设为默认后自动互斥）</label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className={`flex items-center justify-center gap-2 p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                  configForm.type === "text" && configForm.isDefault
+                    ? "border-purple-500 bg-purple-50"
+                    : "border-gray-200 hover:border-purple-300"
+                }`}>
                   <input
                     type="radio"
-                    name={`type-${formId}`}
-                    value="text"
-                    checked={configForm.type === "text"}
-                    onChange={() => setConfigForm({ ...configForm, type: "text" })}
+                    name={`purpose-${formId}`}
+                    checked={configForm.type === "text" && configForm.isDefault}
+                    onChange={() => setConfigForm({ ...configForm, type: "text", isDefault: true, isDefaultImage: false })}
                     className="w-4 h-4 text-purple-600"
                   />
-                  <span className="text-sm text-gray-700">文本模型</span>
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-gray-700">📝 文本模型</div>
+                    <div className="text-xs text-gray-500">写作/对话/审核</div>
+                  </div>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className={`flex items-center justify-center gap-2 p-3 border-2 rounded-xl cursor-pointer transition-all ${
+                  configForm.type === "image" && configForm.isDefaultImage
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-blue-300"
+                }`}>
                   <input
                     type="radio"
-                    name={`type-${formId}`}
-                    value="image"
-                    checked={configForm.type === "image"}
-                    onChange={() => setConfigForm({ ...configForm, type: "image" })}
-                    className="w-4 h-4 text-purple-600"
+                    name={`purpose-${formId}`}
+                    checked={configForm.type === "image" && configForm.isDefaultImage}
+                    onChange={() => setConfigForm({ ...configForm, type: "image", isDefault: false, isDefaultImage: true })}
+                    className="w-4 h-4 text-blue-600"
                   />
-                  <span className="text-sm text-gray-700">绘图模型</span>
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-gray-700">🎨 绘图模型</div>
+                    <div className="text-xs text-gray-500">封面/配图/生图</div>
+                  </div>
                 </label>
               </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id={`isDefault-${formId}`}
-                  checked={configForm.isDefault}
-                  onChange={(e) => setConfigForm({ ...configForm, isDefault: e.target.checked })}
-                  className="w-4 h-4 text-purple-600 rounded"
-                />
-                <label htmlFor={`isDefault-${formId}`} className="text-sm text-gray-600">默认文本模型</label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id={`isDefaultImage-${formId}`}
-                  checked={configForm.isDefaultImage}
-                  onChange={(e) => setConfigForm({ ...configForm, isDefaultImage: e.target.checked })}
-                  className="w-4 h-4 text-blue-600 rounded"
-                />
-                <label htmlFor={`isDefaultImage-${formId}`} className="text-sm text-gray-600">默认绘图模型</label>
+              <div className="flex gap-4 mt-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={configForm.type === "text" && !configForm.isDefault}
+                    onChange={(e) => setConfigForm({ ...configForm, type: "text", isDefault: e.target.checked, isDefaultImage: false })}
+                    className="w-4 h-4 text-purple-600 rounded"
+                  />
+                  <span className="text-sm text-gray-500">仅添加（不设为默认）</span>
+                </label>
               </div>
             </div>
             <div className="flex gap-3 pt-2">
@@ -256,16 +257,16 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
                 <div>
                   <div className="flex items-center gap-2">
                     <h4 className="font-bold text-gray-900">{config.name}</h4>
-                    {config.type === "image" ? (
-                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">绘图</span>
-                    ) : (
-                      <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full">文本</span>
-                    )}
                     {config.isDefault && (
-                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">默认文本</span>
+                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">✨ 默认文本</span>
                     )}
                     {config.isDefaultImage && (
-                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">默认绘图</span>
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full font-medium">✨ 默认绘图</span>
+                    )}
+                    {!config.isDefault && !config.isDefaultImage && (
+                      <span className={`px-2 py-0.5 text-xs rounded-full ${config.type === "image" ? "bg-gray-100 text-gray-600" : "bg-gray-100 text-gray-600"}`}>
+                        {config.type === "image" ? "绘图" : "文本"}
+                      </span>
                     )}
                   </div>
                   <p className="text-sm text-gray-500 mt-1">{config.apiUrl}</p>

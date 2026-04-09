@@ -172,18 +172,18 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
               />
             </div>
             <div>
-              <label className="text-sm text-gray-600 mb-1 block">用途（设为默认后自动互斥）</label>
+              <label className="text-sm text-gray-600 mb-1 block">用途（必选）</label>
               <div className="grid grid-cols-2 gap-3">
                 <label className={`flex items-center justify-center gap-2 p-3 border-2 rounded-xl cursor-pointer transition-all ${
-                  configForm.type === "text" && configForm.isDefault
+                  configForm.type === "text"
                     ? "border-purple-500 bg-purple-50"
                     : "border-gray-200 hover:border-purple-300"
                 }`}>
                   <input
                     type="radio"
                     name={`purpose-${formId}`}
-                    checked={configForm.type === "text" && configForm.isDefault}
-                    onChange={() => setConfigForm({ ...configForm, type: "text", isDefault: true, isDefaultImage: false })}
+                    checked={configForm.type === "text"}
+                    onChange={() => setConfigForm({ ...configForm, type: "text", isDefault: false, isDefaultImage: false })}
                     className="w-4 h-4 text-purple-600"
                   />
                   <div className="text-center">
@@ -192,15 +192,15 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
                   </div>
                 </label>
                 <label className={`flex items-center justify-center gap-2 p-3 border-2 rounded-xl cursor-pointer transition-all ${
-                  configForm.type === "image" && configForm.isDefaultImage
+                  configForm.type === "image"
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-200 hover:border-blue-300"
                 }`}>
                   <input
                     type="radio"
                     name={`purpose-${formId}`}
-                    checked={configForm.type === "image" && configForm.isDefaultImage}
-                    onChange={() => setConfigForm({ ...configForm, type: "image", isDefault: false, isDefaultImage: true })}
+                    checked={configForm.type === "image"}
+                    onChange={() => setConfigForm({ ...configForm, type: "image", isDefault: false, isDefaultImage: false })}
                     className="w-4 h-4 text-blue-600"
                   />
                   <div className="text-center">
@@ -209,16 +209,25 @@ export default function ApiConfigSelector({ defaultConfig, onConfigsLoaded }: Ap
                   </div>
                 </label>
               </div>
-              <div className="flex gap-4 mt-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={configForm.type === "text" && !configForm.isDefault}
-                    onChange={(e) => setConfigForm({ ...configForm, type: "text", isDefault: e.target.checked, isDefaultImage: false })}
-                    className="w-4 h-4 text-purple-600 rounded"
-                  />
-                  <span className="text-sm text-gray-500">仅添加（不设为默认）</span>
-                </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={configForm.isDefault || configForm.isDefaultImage}
+                  onChange={(e) => {
+                    if (!e.target.checked) {
+                      setConfigForm({ ...configForm, isDefault: false, isDefaultImage: false });
+                    } else {
+                      // 勾选时，根据当前类型设置对应的默认标记
+                      if (configForm.type === "text") {
+                        setConfigForm({ ...configForm, isDefault: true, isDefaultImage: false });
+                      } else {
+                        setConfigForm({ ...configForm, isDefault: false, isDefaultImage: true });
+                      }
+                    }
+                  }}
+                  className="w-4 h-4 text-purple-600 rounded"
+                />
+                <span className="text-sm text-gray-600">设为系统默认（{configForm.type === "text" ? "文本" : "绘图"}）</span>
               </div>
             </div>
             <div className="flex gap-3 pt-2">

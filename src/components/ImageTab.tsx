@@ -1,7 +1,8 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { ImageIcon, Loader2, Copy, Check, Sparkles } from "lucide-react";
+import { ImageIcon, Loader2, Copy, Check, Sparkles, LayoutTemplate, ChevronDown, ChevronRight } from "lucide-react";
 import type { ApiConfig } from "./ApiConfigSelector";
+import StickerGenerator from "./StickerGenerator";
 
 const IMAGE_STYLES = [
   { id: "tech", name: "科技感", icon: "💻", description: "未来科技风格" },
@@ -23,6 +24,9 @@ interface Props {
 export default function ImageTab({ categoryId }: Props) {
   const [defaultConfig, setDefaultConfig] = useState<ApiConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
+
+  // 贴纸生成器展开状态
+  const [showStickerGenerator, setShowStickerGenerator] = useState(false);
 
   // 从后端加载默认 API 配置
   useEffect(() => {
@@ -171,6 +175,33 @@ export default function ImageTab({ categoryId }: Props) {
               {!defaultConfig && !configLoading && (
                 <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
                   ⚠️ 请先在侧边栏「系统设置」中配置 AI API
+                </div>
+              )}
+            </div>
+
+            {/* 文字排版生图 - 折叠面板 */}
+            <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl border border-orange-100">
+              <button
+                onClick={() => setShowStickerGenerator(!showStickerGenerator)}
+                className="w-full px-6 py-4 flex items-center justify-between text-left"
+              >
+                <div className="flex items-center gap-3">
+                  <LayoutTemplate size={20} className="text-orange-600" />
+                  <div>
+                    <h3 className="text-lg font-bold text-orange-800">文字排版生图</h3>
+                    <p className="text-sm text-orange-600">预设模板 + JSON 调试，生成小红书/朋友圈贴纸组合图</p>
+                  </div>
+                </div>
+                {showStickerGenerator ? (
+                  <ChevronDown size={20} className="text-orange-400" />
+                ) : (
+                  <ChevronRight size={20} className="text-orange-400" />
+                )}
+              </button>
+
+              {showStickerGenerator && (
+                <div className="px-6 pb-6">
+                  <StickerGenerator />
                 </div>
               )}
             </div>

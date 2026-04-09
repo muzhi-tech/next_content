@@ -14,6 +14,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^12.8.0",
     "highlight.js": "^11.11.1",
+    "html-to-image": "^1.11.13",
     "lucide-react": "^0.378.0",
     "marked": "^18.0.0",
     "marked-highlight": "^2.2.4",

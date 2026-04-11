@@ -913,149 +913,6 @@ async function saveGeneratedContentFromPipeline(ctx: PipelineContext): Promise<v
   }
 }
 
-interface WechatConfig {
-  appId: string;
-  appSecret: string;
-}
-
-interface PublishResult {
-  url?: string;
-  mediaId?: string;
-}
-
-const MAX_PUBLISH_RETRIES = 3;
-const PUBLISH_RETRY_DELAY_MS = 2000;
-
-async function executePublish(topic: string, content: string, coverPrompt: string): Promise<PublishResult> {
-  const appId = process.env.WECHAT_APP_ID;
-  const appSecret = process.env.WECHAT_APP_SECRET;
-
-  if (!appId || !appSecret) {
-    throw new Error("未配置公众号 AppID/AppSecret (环境变量 WECHAT_APP_ID 和 WECHAT_APP_SECRET)，无法发布。");
-  }
-
-  // Parse content to check if it's sticker JSON
-  let stickerData: { title: string; slides: { heading: string; content: string }[]; caption: string } | null = null;
-  try {
-    stickerData = JSON.parse(content);
-    if (!stickerData?.title || !stickerData?.slides) {
-      stickerData = null;
-    }
-  } catch {
-    stickerData = null;
-  }
-
-  let lastError: Error | null = null;
-
-  for (let attempt = 1; attempt <= MAX_PUBLISH_RETRIES; attempt++) {
-    try {
-      const { fetchAccessToken, publishDraft, publishStickerDraft, uploadImageMaterial } = await import("@/lib/wechat");
-      const accessToken = await fetchAccessToken(appId, appSecret);
-
-      if (stickerData) {
-        // Sticker mode: publish multi-article sticker draft
-        const imageUrls = coverPrompt ? coverPrompt.split(',').filter(Boolean) : [];
-
-        // Upload images if provided
-        const uploadedImageIds: string[] = [];
-        for (const imageUrl of imageUrls) {
-          try {
-            const result = await uploadImageMaterial(accessToken, imageUrl.trim());
-            if (result.media_id) {
-              uploadedImageIds.push(result.media_id);
-            }
-          } catch (uploadError) {
-            console.warn(`[publish] Failed to upload image ${imageUrl}:`, uploadError);
-          }
-        }
-
-        // Build sticker HTML content
-        const buildHtml = (title: string, text: string, imgUrl?: string): string => {
-          let html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;max-width:675px;margin:0 auto;padding:20px 16px;background:#fff;box-sizing:border-box;">`;
-          if (imgUrl) {
-            html += `<img src="${imgUrl}" style="width:100%;max-width:675px;border-radius:8px;margin-bottom:16px;display:block;" />`;
-          }
-          html += `<h2 style="font-size:22px;font-weight:bold;color:#1a1a1a;margin:0 0 12px 0;line-height:1.4;">${title}</h2>`;
-          html += `<p style="font-size:16px;color:#333;line-height:1.8;margin:0;">${text}</p>`;
-          html += `</div>`;
-          return html;
-        };
-
-        const articles = [];
-
-        // Cover article with summary of all slides
-        const summaryContent = stickerData.slides
-          .map((s, i) => `<p style="font-size:15px;color:#555;margin:8px 0;">📌 ${s.heading}: ${s.content}</p>`)
-          .join("");
-        articles.push({
-          title: stickerData.title,
-          content: buildHtml(stickerData.title, summaryContent, imageUrls[0]),
-          thumbMediaId: uploadedImageIds[0] || "",
-          author: "",
-          needOpenComment: 1,
-          onlyFansCanComment: 0,
-        });
-
-        // Each slide as a separate article
-        for (let i = 1; i < stickerData.slides.length; i++) {
-          const slide = stickerData.slides[i - 1];
-          articles.push({
-            title: slide.heading,
-            content: buildHtml(slide.heading, `<p style="font-size:16px;color:#333;line-height:1.8;">${slide.content}</p>`, imageUrls[i]),
-            thumbMediaId: uploadedImageIds[i] || "",
-            author: "",
-            needOpenComment: 1,
-            onlyFansCanComment: 0,
-          });
-        }
-
-        // Final article with caption/hook
-        articles.push({
-          title: "👇 点击查看更多",
-          content: buildHtml("互动话题", `<p style="font-size:16px;color:#333;line-height:1.8;">${stickerData.caption}</p>`),
-          thumbMediaId: uploadedImageIds[stickerData.slides.length] || "",
-          author: "",
-          needOpenComment: 1,
-          onlyFansCanComment: 0,
-        });
-
-        const result = await publishStickerDraft(accessToken, articles);
-        if (result.errcode && result.errcode !== 0) {
-          throw new Error(`贴图发布失败: ${result.errmsg}`);
-        }
-
-        const mediaId = result.media_id || "";
-        return {
-          url: mediaId ? `https://mp.weixin.qq.com/s/${mediaId}` : undefined,
-          mediaId,
-        };
-      } else {
-        // Long article mode: publish single article draft
-        const thumbMediaId = "placeholder"; // In production, upload cover image first
-        const result = await publishDraft(accessToken, topic, content, thumbMediaId);
-        if (result.errcode && result.errcode !== 0) {
-          throw new Error(`长文发布失败: ${result.errmsg}`);
-        }
-
-        const mediaId = result.media_id || "";
-        return {
-          url: mediaId ? `https://mp.weixin.qq.com/s/${mediaId}` : undefined,
-          mediaId,
-        };
-      }
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`[publish] Attempt ${attempt}/${MAX_PUBLISH_RETRIES} failed:`, err.message);
-
-      if (attempt < MAX_PUBLISH_RETRIES) {
-        await new Promise(resolve => setTimeout(resolve, PUBLISH_RETRY_DELAY_MS * attempt));
-      }
-    }
-  }
-
-  throw new Error(`公众号发布失败，已重试 ${MAX_PUBLISH_RETRIES} 次: ${lastError?.message || "未知错误"}`);
-}
-
 /**
  * 贴图模式管道 (4步)
  * Collect -> MicroWriting -> VisualRendering -> Publish
@@ -1140,18 +997,26 @@ async function runStickerPipeline(params: {
     ctx.history.push(stepResult("visualrender", "success", { message: "Visual rendering handled by frontend" }));
     emitEvent(onEvent, "step_complete", ctx.id, { step: "visualrender", stepIndex: 2, data: { message: "Sticker data ready for visual rendering" } });
 
-    // Step 3: Publish (组装发布)
+    // Step 3: Publish (组装发布 - 使用统一多平台发布器)
     checkTimeout();
     ctx.currentStep = "publish";
     emitEvent(onEvent, "step_start", ctx.id, { step: "publish", stepIndex: 3 });
-    const publishResult = await withTimeout(
-      executePublish(ctx.topic || stickerData.title, JSON.stringify(stickerData), ""),
+    const publishResults = await withTimeout(
+      publishContent(["wx"], {
+        topic: ctx.topic || stickerData.title,
+        content: JSON.stringify(stickerData),
+        extra: { stickerMode: true, slides: stickerData.slides, caption: stickerData.caption },
+      }),
       STEP_TIMEOUT_MS, "publish"
     );
-    ctx.history.push(stepResult("publish", "success", { stickerData, url: publishResult.url }));
+    const wxResult = publishResults.find(r => r.platform === "wx");
+    const publishSuccess = publishResults.some(r => r.success);
+    ctx.publishResults = publishResults;
+    if (!publishSuccess) throw new Error(publishResults.map(r => `${r.platform}: ${r.error}`).join("; "));
+    ctx.history.push(stepResult("publish", "success", { stickerData, url: wxResult?.url, platforms: publishResults }));
     ctx.status = "completed";
-    emitEvent(onEvent, "step_complete", ctx.id, { step: "publish", stepIndex: 3, data: { url: publishResult.url } });
-    emitEvent(onEvent, "pipeline_complete", ctx.id, { status: "completed", data: { stickerData, url: publishResult.url } });
+    emitEvent(onEvent, "step_complete", ctx.id, { step: "publish", stepIndex: 3, data: { url: wxResult?.url } });
+    emitEvent(onEvent, "pipeline_complete", ctx.id, { status: "completed", data: { stickerData, url: wxResult?.url } });
 
     // Auto-save sticker content as draft
     saveStickerContentFromPipeline(ctx).catch((err) => {

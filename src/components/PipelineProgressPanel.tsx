@@ -1,5 +1,5 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import {
   CheckCircle,
   Circle,
@@ -9,6 +9,9 @@ import {
   RotateCcw,
   X,
   BookOpen,
+  MessageSquare,
+  Image as ImageIcon,
+  ZoomIn,
 } from "lucide-react";
 
 export interface PipelineStepInfo {
@@ -20,6 +23,11 @@ export interface PipelineStepInfo {
   completedAt?: string;
 }
 
+export interface IllustrationData {
+  coverUrl?: string;
+  illustrations?: Array<{ url: string; caption?: string }>;
+}
+
 export interface PipelineProgressPanelProps {
   pipelineId: string;
   steps: PipelineStepInfo[];
@@ -27,6 +35,20 @@ export interface PipelineProgressPanelProps {
   overallStatus: "idle" | "running" | "completed" | "failed" | "paused";
   error?: string;
   matchedPages?: string[];
+  /** Human-in-the-loop: the topic proposed by AI (set when paused) */
+  pausedTopic?: string;
+  /** Human-in-the-loop: editable topic text */
+  editedTopic?: string;
+  /** Human-in-the-loop: loading state while approving */
+  approvingTopic?: boolean;
+  /** Human-in-the-loop: called when user confirms topic */
+  onApproveTopic?: (topic: string) => void;
+  /** Human-in-the-loop: called when user rejects/abandons pipeline */
+  onRejectTopic?: () => void;
+  /** Human-in-the-loop: called when user edits the topic text */
+  onTopicChange?: (topic: string) => void;
+  /** Illustration data to preview when pipeline completes */
+  illustrations?: IllustrationData;
   onRetry?: () => void;
   onCancel?: () => void;
 }
@@ -81,12 +103,20 @@ export default function PipelineProgressPanel({
   overallStatus,
   error,
   matchedPages,
+  pausedTopic,
+  editedTopic,
+  approvingTopic,
+  onApproveTopic,
+  onRejectTopic,
+  onTopicChange,
+  illustrations,
   onRetry,
   onCancel,
 }: PipelineProgressPanelProps) {
   const totalSteps = steps.length;
   const completedCount = steps.filter((s) => s.status === "completed").length;
   const progressPercent = totalSteps > 0 ? Math.round(((currentStepIndex + (overallStatus === "completed" ? 1 : 0)) / totalSteps) * 100) : 0;
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   return (
     <div className="bg-gray-900 rounded-2xl border border-gray-700 overflow-hidden">
@@ -251,6 +281,113 @@ export default function PipelineProgressPanel({
         </div>
       )}
 
+      {/* Human-in-the-loop: Topic approval panel */}
+      {overallStatus === "paused" && pausedTopic && (
+        <div className="px-5 py-4 border-t border-amber-500/30 bg-amber-500/5">
+          <div className="flex items-center gap-2 mb-3">
+            <MessageSquare size={16} className="text-amber-400" />
+            <span className="text-sm font-medium text-amber-300">AI 建议的选题</span>
+          </div>
+          <div className="bg-gray-800 rounded-lg px-3 py-2 mb-3">
+            <p className="text-sm text-gray-200 leading-relaxed">{pausedTopic}</p>
+          </div>
+          <label className="text-xs text-amber-300/70 mb-1.5 block">修改选题（可选）</label>
+          <textarea
+            value={editedTopic ?? pausedTopic}
+            onChange={(e) => onTopicChange?.(e.target.value)}
+            rows={3}
+            className="w-full bg-gray-800 text-gray-200 text-sm rounded-lg px-3 py-2 border border-gray-600 focus:outline-none focus:border-amber-400 resize-none mb-3"
+            placeholder="在此修改选题..."
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={() => onApproveTopic?.(editedTopic ?? pausedTopic)}
+              disabled={approvingTopic}
+              className="flex-1 px-3 py-2 bg-amber-500 text-gray-900 text-sm font-medium rounded-lg hover:bg-amber-400 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              {approvingTopic ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              {approvingTopic ? "确认中..." : "确认继续"}
+            </button>
+            <button
+              onClick={() => onRejectTopic?.()}
+              disabled={approvingTopic}
+              className="px-3 py-2 bg-gray-700 text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-600 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+            >
+              <X size={14} /> 放弃
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Illustration preview when pipeline completes */}
+      {overallStatus === "completed" && illustrations && (
+        <div className="px-5 py-4 border-t border-gray-700 bg-gray-800/50">
+          <div className="flex items-center gap-2 mb-3">
+            <ImageIcon size={14} className="text-green-400" />
+            <span className="text-xs font-medium text-green-400">配图预览</span>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {illustrations.coverUrl && (
+              <div
+                className="relative group cursor-pointer rounded-lg overflow-hidden border border-gray-600 hover:border-green-400 transition-colors"
+                onClick={() => setLightboxUrl(illustrations.coverUrl!)}
+              >
+                <img
+                  src={illustrations.coverUrl}
+                  alt="封面图"
+                  className="w-40 h-24 object-cover"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <ZoomIn size={20} className="text-white" />
+                </div>
+                <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">封面</span>
+              </div>
+            )}
+            {illustrations.illustrations?.map((img, i) => (
+              <div
+                key={i}
+                className="relative group cursor-pointer rounded-lg overflow-hidden border border-gray-600 hover:border-green-400 transition-colors"
+                onClick={() => setLightboxUrl(img.url)}
+              >
+                <img
+                  src={img.url}
+                  alt={img.caption || `插图 ${i + 1}`}
+                  className="w-40 h-24 object-cover"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <ZoomIn size={20} className="text-white" />
+                </div>
+                <span className="absolute bottom-1 left-1 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">
+                  {img.caption || `插图 ${i + 1}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox overlay */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 cursor-pointer"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]">
+            <button
+              onClick={() => setLightboxUrl(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 bg-gray-800 text-white rounded-full flex items-center justify-center hover:bg-gray-700 z-10"
+            >
+              <X size={16} />
+            </button>
+            <img
+              src={lightboxUrl}
+              alt="Preview"
+              className="max-w-full max-h-[85vh] rounded-lg object-contain"
+            />
+          </div>
+        </div>
+      )}
+
       {/* Error + action buttons */}
       {(error || onRetry || onCancel) && (
         <div className="px-5 py-3 border-t border-gray-700 bg-gray-800/50">
@@ -269,7 +406,7 @@ export default function PipelineProgressPanel({
                 <RotateCcw size={12} /> 重试
               </button>
             )}
-            {onCancel && overallStatus === "running" && (
+            {onCancel && (overallStatus === "running" || overallStatus === "paused") && (
               <button
                 onClick={onCancel}
                 className="px-3 py-1.5 bg-gray-700 text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-600 transition-colors flex items-center gap-1.5"

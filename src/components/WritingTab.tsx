@@ -1,10 +1,10 @@
 "use client";
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Sparkles, Loader2, Copy, Check, Save, ChevronDown, ChevronRight, User, Palette, BookOpen, Zap, Play, Edit3, Send } from "lucide-react";
+import { Sparkles, Loader2, Copy, Check, Save, ChevronDown, ChevronRight, User, Palette, BookOpen, Zap, Play, Edit3, Send, Image as ImageIcon, X } from "lucide-react";
 import { Persona, Style, KnowledgeBase } from "@/lib/types";
 import { personaApi, styleApi, knowledgeApi } from "@/lib/api";
 import type { ApiConfig } from "./ApiConfigSelector";
-import PipelineProgressPanel, { PipelineStepInfo } from "./PipelineProgressPanel";
+import PipelineProgressPanel, { PipelineStepInfo, IllustrationData } from "./PipelineProgressPanel";
 
 const LENGTH_OPTIONS = [
   { id: "short", name: "短文", icon: "📝" },
@@ -88,6 +88,10 @@ export default function WritingTab({ categoryId }: Props) {
   const [pausedTopic, setPausedTopic] = useState("");
   const [editedTopic, setEditedTopic] = useState("");
   const [approvingTopic, setApprovingTopic] = useState(false);
+
+  // 配图预览
+  const [illustrationData, setIllustrationData] = useState<IllustrationData | undefined>(undefined);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const loadAccountSpace = async () => {
     try {
@@ -464,6 +468,16 @@ export default function WritingTab({ categoryId }: Props) {
               if (evt.step === "write" && evt.output) {
                 setGeneratedContent(evt.output);
               }
+              // If illustrate step produced image URLs, store them
+              if (evt.step === "illustrate" && evt.data) {
+                const d = evt.data as Record<string, unknown>;
+                if (d.coverUrl || d.illustrations) {
+                  setIllustrationData({
+                    coverUrl: d.coverUrl as string | undefined,
+                    illustrations: d.illustrations as Array<{ url: string; caption?: string }> | undefined,
+                  });
+                }
+              }
             }
 
             // step_failed
@@ -487,12 +501,30 @@ export default function WritingTab({ categoryId }: Props) {
             if (evt.type === "pipeline_completed") {
               setPipelineStatus("completed");
               if (evt.output) setGeneratedContent(evt.output);
+              // Extract illustration data from pipeline completion event
+              if (evt.data) {
+                const d = evt.data as Record<string, unknown>;
+                if (d.coverUrl || d.illustrations) {
+                  setIllustrationData({
+                    coverUrl: d.coverUrl as string | undefined,
+                    illustrations: d.illustrations as Array<{ url: string; caption?: string }> | undefined,
+                  });
+                }
+              }
             }
 
             // pipeline_failed
             if (evt.type === "pipeline_failed") {
               setPipelineStatus("failed");
               setPipelineError(evt.error || "管道执行失败");
+            }
+
+            // pipeline_paused — Human-in-the-loop
+            if (evt.type === "pipeline_paused") {
+              setPipelineStatus("paused");
+              const suggestedTopic = evt.topic || evt.data?.topic || "";
+              setPausedTopic(suggestedTopic);
+              setEditedTopic(suggestedTopic);
             }
 
             // Generic error field
@@ -524,6 +556,39 @@ export default function WritingTab({ categoryId }: Props) {
   const handleRetryPipeline = useCallback(() => {
     startPipeline();
   }, [startPipeline]);
+
+  const handleApproveTopic = useCallback(async (topic: string) => {
+    if (!pipelineId) return;
+    setApprovingTopic(true);
+    try {
+      const res = await fetch(`/api/pipeline/${pipelineId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve-topic", topic }),
+      });
+      const data = await res.json();
+      if (data.code !== 0 && data.code !== 200) {
+        showToast("error", data.msg || "确认选题失败");
+        return;
+      }
+      // Pipeline will resume; switch status back to running
+      setPipelineStatus("running");
+      setPausedTopic("");
+      setEditedTopic("");
+      showToast("success", "选题已确认，管道继续运行");
+    } catch (err) {
+      showToast("error", "确认选题失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setApprovingTopic(false);
+    }
+  }, [pipelineId]);
+
+  const handleRejectTopic = useCallback(() => {
+    setPipelineStatus("failed");
+    setPipelineError("用户放弃选题");
+    setPausedTopic("");
+    setEditedTopic("");
+  }, []);
 
   return (
     <div className="h-full flex flex-col">
@@ -818,8 +883,15 @@ export default function WritingTab({ categoryId }: Props) {
                   overallStatus={pipelineStatus}
                   error={pipelineError}
                   matchedPages={pipelineMatchedPages}
+                  pausedTopic={pausedTopic}
+                  editedTopic={editedTopic}
+                  approvingTopic={approvingTopic}
+                  onApproveTopic={handleApproveTopic}
+                  onRejectTopic={handleRejectTopic}
+                  onTopicChange={setEditedTopic}
+                  illustrations={illustrationData}
                   onRetry={pipelineStatus === "failed" ? handleRetryPipeline : undefined}
-                  onCancel={pipelineStatus === "running" ? handleCancelPipeline : undefined}
+                  onCancel={pipelineStatus === "running" || pipelineStatus === "paused" ? handleCancelPipeline : undefined}
                 />
               </div>
             )}
@@ -911,6 +983,75 @@ export default function WritingTab({ categoryId }: Props) {
                       <p className="text-sm text-gray-600">{item.summary}</p>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Illustration preview outside pipeline panel */}
+            {pipelineStatus === "completed" && illustrationData && (illustrationData.coverUrl || (illustrationData.illustrations && illustrationData.illustrations.length > 0)) && (
+              <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <ImageIcon size={18} className="text-green-600" />
+                  <h3 className="text-lg font-bold text-gray-900">配图预览</h3>
+                </div>
+                <div className="flex flex-wrap gap-4">
+                  {illustrationData.coverUrl && (
+                    <div
+                      className="relative group cursor-pointer rounded-xl overflow-hidden border border-gray-200 hover:border-green-400 transition-colors"
+                      onClick={() => setLightboxUrl(illustrationData.coverUrl!)}
+                    >
+                      <img
+                        src={illustrationData.coverUrl}
+                        alt="封面图"
+                        className="w-48 h-32 object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="text-white text-sm font-medium">点击查看大图</span>
+                      </div>
+                      <span className="absolute bottom-2 left-2 text-xs bg-black/60 text-white px-2 py-1 rounded">封面</span>
+                    </div>
+                  )}
+                  {illustrationData.illustrations?.map((img, i) => (
+                    <div
+                      key={i}
+                      className="relative group cursor-pointer rounded-xl overflow-hidden border border-gray-200 hover:border-green-400 transition-colors"
+                      onClick={() => setLightboxUrl(img.url)}
+                    >
+                      <img
+                        src={img.url}
+                        alt={img.caption || `插图 ${i + 1}`}
+                        className="w-48 h-32 object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="text-white text-sm font-medium">点击查看大图</span>
+                      </div>
+                      <span className="absolute bottom-2 left-2 text-xs bg-black/60 text-white px-2 py-1 rounded">
+                        {img.caption || `插图 ${i + 1}`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Global lightbox overlay */}
+            {lightboxUrl && (
+              <div
+                className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-8 cursor-pointer"
+                onClick={() => setLightboxUrl(null)}
+              >
+                <div className="relative max-w-4xl max-h-[90vh]">
+                  <button
+                    onClick={() => setLightboxUrl(null)}
+                    className="absolute -top-3 -right-3 w-8 h-8 bg-gray-800 text-white rounded-full flex items-center justify-center hover:bg-gray-700 z-10"
+                  >
+                    <X size={16} />
+                  </button>
+                  <img
+                    src={lightboxUrl}
+                    alt="Preview"
+                    className="max-w-full max-h-[85vh] rounded-lg object-contain"
+                  />
                 </div>
               </div>
             )}

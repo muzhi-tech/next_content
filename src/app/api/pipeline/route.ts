@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  let body: { categoryId?: string; keywordId?: string; stream?: boolean; resumeFromPipelineId?: string };
+  let body: { categoryId?: string; keywordId?: string; stream?: boolean; resumeFromPipelineId?: string; humanApproval?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { categoryId, keywordId, stream: useSSE, resumeFromPipelineId } = body;
+  const { categoryId, keywordId, stream: useSSE, resumeFromPipelineId, humanApproval } = body;
 
   if (!categoryId && !resumeFromPipelineId) {
     return NextResponse.json(
@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
         categoryId: categoryId || '',
         keywordId,
         resumeFromPipelineId,
+        humanApproval,
         apiConfig: {
           apiUrl: apiConfig.apiUrl,
           apiKey: apiConfig.apiKey,
@@ -170,6 +171,14 @@ export async function POST(request: NextRequest) {
               pages: event.data?.pages || [],
             });
             break;
+          case "pipeline_paused":
+            sendSSE("pipeline_paused", {
+              type: "pipeline_paused",
+              pipelineId: event.pipelineId,
+              status: "paused",
+              topic: event.data?.topic,
+            });
+            break;
           case "pipeline_complete":
             sendSSE("pipeline_complete", {
               type: "pipeline_completed",
@@ -194,6 +203,7 @@ export async function POST(request: NextRequest) {
         categoryId: categoryId || '',
         keywordId,
         resumeFromPipelineId,
+        humanApproval,
         apiConfig: {
           apiUrl: apiConfig.apiUrl,
           apiKey: apiConfig.apiKey,

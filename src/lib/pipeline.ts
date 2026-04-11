@@ -21,6 +21,7 @@ import {
   listPipelineRuns,
   createGeneratedContent,
   createStickerContent,
+  getDefaultApiConfig,
 } from "@/lib/db";
 import type { PipelineRun, PipelineStepResult, StyleProfile } from "@/lib/types";
 import { extractStyleProfile } from "./agents/style-extractor";
@@ -46,7 +47,7 @@ export interface PipelineContext {
   coverPrompt?: string;
   matchedPages?: string[];
   currentStep: PipelineStep;
-  status: "running" | "completed" | "failed";
+  status: "running" | "completed" | "failed" | "paused";
   history: StepResult[];
   retryCount: number;
   stickerData?: StickerOutput;  // 贴图模式输出
@@ -95,6 +96,7 @@ export type PipelineEventType =
   | "wiki_context"
   | "pipeline_complete"
   | "pipeline_failed"
+  | "pipeline_paused"
   | "sticker_data";
 
 export interface PipelineEvent {
@@ -127,7 +129,7 @@ export async function getPipeline(id: string): Promise<PipelineContext | undefin
     id: run.id,
     categoryId: run.categoryId,
     currentStep: STEP_ORDER[run.currentStepIndex] || "publish",
-    status: run.status === "paused" ? "failed" : run.status,
+    status: run.status === "paused" ? "paused" : run.status,
     history: run.steps.map((s) => ({
       step: s.step as PipelineStep,
       status: (s.status === "completed" ? "success" : s.status === "running" ? "success" : s.status === "pending" ? "skipped" : "failed") as StepResult["status"],
@@ -178,6 +180,7 @@ export async function runPipeline(params: {
   onEvent?: PipelineEventHandler;
   resumeFromPipelineId?: string;
   type?: "long-article" | "sticker";  // 管道类型：长文 or 贴图
+  humanApproval?: boolean;  // 选题后暂停等待人工确认
 }): Promise<PipelineContext> {
   const pipelineType = params.type || "long-article";
 
@@ -298,6 +301,14 @@ export async function runPipeline(params: {
       ctx.history.push(stepResult("topic", "success", { topic }));
       await persistStep(ctx.id, 1, { status: "completed", output: topic, completedAt: new Date().toISOString() });
       emitEvent(onEvent, "step_complete", ctx.id, { step: "topic", stepIndex: 1, data: { topic } });
+
+      // Human-in-the-loop: pause after topic if humanApproval is enabled
+      if (params.humanApproval) {
+        ctx.status = "paused";
+        await updatePipelineStatus(ctx.id, "paused");
+        emitEvent(onEvent, "pipeline_paused", ctx.id, { status: "paused", data: { topic } });
+        return ctx;
+      }
     }
 
     // Step 2-3: Write + Score
@@ -466,6 +477,180 @@ export async function runPipeline(params: {
     ctx.history.push(stepResult(ctx.currentStep, "failed", undefined, error instanceof Error ? error.message : String(error)));
     await updatePipelineStatus(ctx.id, "failed", undefined, error instanceof Error ? error.message : String(error));
     emitEvent(onEvent, "pipeline_failed", ctx.id, { error: error instanceof Error ? error.message : String(error) });
+  }
+
+  return ctx;
+}
+
+/**
+ * Resume a paused pipeline from the topic approval step.
+ * Called after user confirms/approves the topic via PATCH /api/pipeline/[id].
+ */
+export async function resumePipeline(params: {
+  pipelineId: string;
+  approvedTopic?: string;
+  onEvent?: PipelineEventHandler;
+}): Promise<PipelineContext> {
+  const run = await getPipelineRun(params.pipelineId);
+  if (!run) throw new Error("管道不存在");
+  if (run.status !== "paused") throw new Error("管道不在暂停状态");
+
+  const apiConfig = await getDefaultApiConfig();
+  if (!apiConfig) throw new Error("未配置 AI API");
+
+  const ctx: PipelineContext = {
+    id: run.id,
+    categoryId: run.categoryId,
+    topic: params.approvedTopic || run.steps.find(s => s.step === "topic")?.output || "",
+    currentStep: "write",
+    status: "running",
+    history: [],
+    retryCount: 0,
+    reviewRetryCount: 0,
+    matchedPages: [],
+  };
+
+  // Restore collected articles
+  const collectedArticles = await executeCollect(ctx.categoryId);
+
+  // Update pipeline status back to running
+  await updatePipelineStatus(ctx.id, "running");
+
+  // If topic was modified, update step 1
+  if (params.approvedTopic) {
+    ctx.topic = params.approvedTopic;
+    await persistStep(ctx.id, 1, { status: "completed", output: params.approvedTopic, completedAt: new Date().toISOString() });
+  }
+
+  emitEvent(params.onEvent, "pipeline_start", ctx.id, { status: "running", data: { resumed: true, topic: ctx.topic } });
+
+  const pipelineStart = Date.now();
+  const checkTimeout = () => {
+    if (Date.now() - pipelineStart > PIPELINE_TIMEOUT_MS) {
+      throw new Error("管道整体超时 (10min)");
+    }
+  };
+
+  try {
+    // Continue from Step 2: Write + Score
+    ctx.currentStep = "write";
+    emitEvent(params.onEvent, "step_start", ctx.id, { step: "write", stepIndex: 2 });
+    await persistStep(ctx.id, 2, { status: "running", startedAt: new Date().toISOString() });
+    await executeWriteLoop(ctx, { apiUrl: apiConfig.apiUrl, apiKey: apiConfig.apiKey, modelName: apiConfig.modelName }, collectedArticles, undefined, undefined, params.onEvent);
+
+    if (ctx.status === "failed") {
+      await updatePipelineStatus(ctx.id, "failed", undefined, "Write/score loop failed");
+      emitEvent(params.onEvent, "pipeline_failed", ctx.id, { error: "Write/score loop failed" });
+      return ctx;
+    }
+
+    // Step 4: Humanize
+    checkTimeout();
+    ctx.currentStep = "humanize";
+    emitEvent(params.onEvent, "step_start", ctx.id, { step: "humanize", stepIndex: 4 });
+    await persistStep(ctx.id, 4, { status: "running", startedAt: new Date().toISOString() });
+    try {
+      const humanized = await withTimeout(
+        humanizeContent({ apiUrl: apiConfig.apiUrl, apiKey: apiConfig.apiKey, modelName: apiConfig.modelName }, ctx.content || ""),
+        STEP_TIMEOUT_MS, "humanize"
+      );
+      ctx.content = humanized.content;
+      ctx.history.push(stepResult("humanize", "success", { score: humanized.score, changes: humanized.changes.length }));
+      await persistStep(ctx.id, 4, { status: "completed", output: `humanized, score=${humanized.score}`, score: humanized.score, completedAt: new Date().toISOString() });
+      emitEvent(params.onEvent, "step_complete", ctx.id, { step: "humanize", stepIndex: 4, data: { score: humanized.score } });
+    } catch (error) {
+      ctx.history.push(stepResult("humanize", "failed", undefined, error instanceof Error ? error.message : String(error)));
+      await persistStep(ctx.id, 4, { status: "completed", feedback: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() });
+      emitEvent(params.onEvent, "step_complete", ctx.id, { step: "humanize", stepIndex: 4, data: { error: error instanceof Error ? error.message : String(error) } });
+    }
+
+    // Step 5: Review loop
+    checkTimeout();
+    ctx.currentStep = "review";
+    ctx.reviewRetryCount = 0;
+    emitEvent(params.onEvent, "step_start", ctx.id, { step: "review", stepIndex: 5 });
+    await persistStep(ctx.id, 5, { status: "running", startedAt: new Date().toISOString() });
+    try {
+      const reviewPassed = await executeReviewLoop(ctx, { apiUrl: apiConfig.apiUrl, apiKey: apiConfig.apiKey, modelName: apiConfig.modelName }, params.onEvent, checkTimeout);
+      if (!reviewPassed) {
+        ctx.status = "failed";
+        await updatePipelineStatus(ctx.id, "failed", undefined, "Review rejected after max retries");
+        emitEvent(params.onEvent, "pipeline_failed", ctx.id, { error: "Review rejected after max retries" });
+        return ctx;
+      }
+    } catch (error) {
+      ctx.status = "failed";
+      await updatePipelineStatus(ctx.id, "failed", undefined, error instanceof Error ? error.message : String(error));
+      emitEvent(params.onEvent, "pipeline_failed", ctx.id, { error: error instanceof Error ? error.message : String(error) });
+      return ctx;
+    }
+
+    // Step 6: Illustrate
+    checkTimeout();
+    ctx.currentStep = "illustrate";
+    emitEvent(params.onEvent, "step_start", ctx.id, { step: "illustrate", stepIndex: 6 });
+    await persistStep(ctx.id, 6, { status: "running", startedAt: new Date().toISOString() });
+    try {
+      const illResult = await withTimeout(
+        generateIllustrations({ apiUrl: apiConfig.apiUrl, apiKey: apiConfig.apiKey, modelName: apiConfig.modelName }, ctx.topic || "", ctx.content || ""),
+        STEP_TIMEOUT_MS * 2, "illustrate"
+      );
+      ctx.coverPrompt = illResult.coverPrompt;
+      ctx.coverUrl = illResult.coverUrl;
+      ctx.illustrations = illResult.illustrations;
+      ctx.history.push(stepResult("illustrate", "success", { coverUrl: illResult.coverUrl, illustrationCount: illResult.illustrations.length }));
+      await persistStep(ctx.id, 6, { status: "completed", output: JSON.stringify({ coverUrl: illResult.coverUrl, illustrations: illResult.illustrations }), completedAt: new Date().toISOString() });
+      emitEvent(params.onEvent, "step_complete", ctx.id, { step: "illustrate", stepIndex: 6, data: { coverUrl: illResult.coverUrl, illustrationCount: illResult.illustrations.length } });
+    } catch (error) {
+      ctx.history.push(stepResult("illustrate", "failed", undefined, error instanceof Error ? error.message : String(error)));
+      await persistStep(ctx.id, 6, { status: "completed", feedback: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() });
+      emitEvent(params.onEvent, "step_complete", ctx.id, { step: "illustrate", stepIndex: 6, data: { error: error instanceof Error ? error.message : String(error) } });
+    }
+
+    // Step 7: Publish
+    checkTimeout();
+    ctx.currentStep = "publish";
+    emitEvent(params.onEvent, "step_start", ctx.id, { step: "publish", stepIndex: 7 });
+    await persistStep(ctx.id, 7, { status: "running", startedAt: new Date().toISOString() });
+    try {
+      const targetPlatforms: import("@/lib/types").Platform[] = ["wx"];
+      const publishResults = await withTimeout(
+        publishContent(targetPlatforms, {
+          topic: ctx.topic || "",
+          content: ctx.content || "",
+          coverPrompt: ctx.coverPrompt,
+          coverUrl: ctx.coverUrl,
+        }),
+        STEP_TIMEOUT_MS, "publish"
+      );
+      ctx.publishResults = publishResults;
+      const publishSuccess = publishResults.some(r => r.success);
+
+      if (publishSuccess) {
+        ctx.status = "completed";
+        const wxResult = publishResults.find(r => r.platform === "wx");
+        await persistStep(ctx.id, 7, { status: "completed", output: JSON.stringify({ url: wxResult?.url, platforms: publishResults }), completedAt: new Date().toISOString() });
+        await updatePipelineStatus(ctx.id, "completed", ctx.content);
+        emitEvent(params.onEvent, "step_complete", ctx.id, { step: "publish", stepIndex: 7, data: { topic: ctx.topic, url: wxResult?.url } });
+        emitEvent(params.onEvent, "pipeline_complete", ctx.id, { status: "completed", data: { topic: ctx.topic, coverUrl: ctx.coverUrl } });
+        saveGeneratedContentFromPipeline(ctx).catch(() => {});
+      } else {
+        const errorMsg = publishResults.map(r => `${r.platform}: ${r.error}`).join("; ");
+        ctx.status = "failed";
+        await updatePipelineStatus(ctx.id, "failed", undefined, errorMsg);
+        emitEvent(params.onEvent, "pipeline_failed", ctx.id, { error: errorMsg });
+        return ctx;
+      }
+    } catch (error) {
+      ctx.status = "failed";
+      await updatePipelineStatus(ctx.id, "failed", undefined, error instanceof Error ? error.message : String(error));
+      emitEvent(params.onEvent, "pipeline_failed", ctx.id, { error: error instanceof Error ? error.message : String(error) });
+      return ctx;
+    }
+  } catch (error) {
+    ctx.status = "failed";
+    await updatePipelineStatus(ctx.id, "failed", undefined, error instanceof Error ? error.message : String(error));
+    emitEvent(params.onEvent, "pipeline_failed", ctx.id, { error: error instanceof Error ? error.message : String(error) });
   }
 
   return ctx;
@@ -994,4 +1179,4 @@ async function saveStickerContentFromPipeline(ctx: PipelineContext): Promise<voi
   }
 }
 
-export { listPipelineRuns };
+export { listPipelineRuns, resumePipeline };

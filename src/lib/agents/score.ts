@@ -4,12 +4,7 @@
  */
 
 import { createChatCompletionJSON, parseJSON } from "@/lib/content-generator";
-
-interface AIConfig {
-  apiUrl?: string;
-  apiKey?: string;
-  modelName?: string;
-}
+import type { AIConfig } from "@/lib/types";
 
 export interface ScoreBreakdown {
   happy: number;

@@ -315,6 +315,17 @@ export interface GeneratedContent {
 
 export type CollectionLogStatus = 'success' | 'failed' | 'partial';
 
+// ==================== AI 配置相关类型 ====================
+
+/**
+ * AI API 调用配置
+ */
+export interface AIConfig {
+  apiUrl?: string;
+  apiKey?: string;
+  modelName?: string;
+}
+
 export interface CollectionLog {
   id: string;
   categoryId?: string;
@@ -393,4 +404,50 @@ export interface StyleProfile {
   guidelines: string;   // 写作风格指导原则
   samples: string;      // 风格样本
   constraints: string;  // 风格约束
+}
+
+// ==================== 数据分析相关类型 ====================
+
+export interface PlatformDistribution {
+  platform: string;
+  count: number;
+}
+
+export interface CollectionTrend {
+  date: string;
+  count: number;
+}
+
+export interface ContentStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface TopKeyword {
+  keywordId: string;
+  keywordName: string;
+  articleCount: number;
+}
+
+export interface DashboardData {
+  totalArticles: number;
+  weeklyArticles: number;
+  generatedContentTotal: number;
+  platformDistribution: PlatformDistribution[];
+  collectionTrend: CollectionTrend[];
+  generatedContentStats: {
+    total: number;
+    byStatus: ContentStatusCount[];
+  };
+  topKeywords: TopKeyword[];
+}
+
+export interface AgentStat {
+  key: string;
+  name: string;
+  triggered: number;
+  success: number;
+  failed: number;
+  successRate: number;
+  avgDuration: number;
 }

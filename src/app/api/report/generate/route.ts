@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getArticles, getDefaultApiConfig, addReport } from "@/lib/db";
 import { getWikiIndex } from "@/lib/wiki";
 import { createChatCompletionJSON, parseJSON } from "@/lib/content-generator";
+import { generateId } from "@/lib/utils";
 
 interface ReportTopic {
   title: string;
@@ -17,10 +18,6 @@ interface Report {
   date: string;
   summary: string;
   topics: ReportTopic[];
-}
-
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
 function formatDate(): string {

@@ -4,13 +4,7 @@
  */
 
 import { createChatCompletionJSON, parseJSON } from "@/lib/content-generator";
-import type { StickerSlide } from "@/lib/types";
-
-interface AIConfig {
-  apiUrl?: string;
-  apiKey?: string;
-  modelName?: string;
-}
+import type { AIConfig, StickerSlide } from "@/lib/types";
 
 export interface StickerOutput {
   title: string;     // 封面大标题（极具吸引力）

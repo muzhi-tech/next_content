@@ -4,7 +4,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock(import("@/lib/content-generator"), () => ({
   createChatCompletionJSON: vi.fn(),
   parseJSON: vi.fn(),
-  generateCoverPrompt: vi.fn(),
 }));
 
 vi.mock(import("../wiki-query"), () => ({
@@ -23,6 +22,18 @@ vi.mock(import("../agents/review"), () => ({
   reviewContent: vi.fn(),
 }));
 
+vi.mock(import("../agents/illustrate"), () => ({
+  generateIllustrations: vi.fn(),
+}));
+
+vi.mock(import("../agents/publisher"), () => ({
+  publishContent: vi.fn(),
+}));
+
+vi.mock(import("../agents/style-extractor"), () => ({
+  extractStyleProfile: vi.fn(),
+}));
+
 // Mock db for executeCollect + pipeline persistence
 vi.mock(import("@/lib/db"), () => ({
   getArticles: vi.fn(),
@@ -34,15 +45,13 @@ vi.mock(import("@/lib/db"), () => ({
   listPipelineRuns: vi.fn(),
 }));
 
-vi.mock(import("@/lib/wechat"), () => ({
-  fetchAccessToken: vi.fn().mockResolvedValue("mock-token"),
-  publishDraft: vi.fn().mockResolvedValue({ media_id: "mock-media-id" }),
-}));
-
-import { createChatCompletionJSON, generateCoverPrompt } from "@/lib/content-generator";
+import { createChatCompletionJSON } from "@/lib/content-generator";
 import { humanizeContent } from "../agents/humanize";
 import { scoreContent } from "../agents/score";
 import { reviewContent } from "../agents/review";
+import { generateIllustrations } from "../agents/illustrate";
+import { publishContent } from "../agents/publisher";
+import { extractStyleProfile } from "../agents/style-extractor";
 import { getArticles, getPipelineRun, createPipelineRun, updatePipelineStep, updatePipelineStatus, updatePipelineRun, listPipelineRuns } from "@/lib/db";
 import { runPipeline, getPipeline } from "../pipeline";
 
@@ -101,6 +110,13 @@ beforeEach(() => {
 
   // listPipelineRuns
   (listPipelineRuns as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+  // extractStyleProfile: return a simple profile by default
+  (extractStyleProfile as ReturnType<typeof vi.fn>).mockResolvedValue({
+    guidelines: "Be conversational",
+    samples: "I think this is great",
+    constraints: "Avoid jargon",
+  });
 });
 
 describe("runPipeline", () => {
@@ -152,10 +168,18 @@ describe("runPipeline", () => {
     });
 
     // Illustrate
-    (generateCoverPrompt as ReturnType<typeof vi.fn>).mockResolvedValue({
-      prompt: "A beautiful cover image",
-      negativePrompt: "blurry",
+    (generateIllustrations as ReturnType<typeof vi.fn>).mockResolvedValue({
+      coverPrompt: "A beautiful cover image",
+      coverUrl: "https://example.com/cover.jpg",
+      illustrations: [
+        { label: "Intro illustration", prompt: "An intro image", url: "https://example.com/illust1.jpg" },
+      ],
     });
+
+    // Publish
+    (publishContent as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { platform: "wx", success: true, url: "https://mp.weixin.qq.com/s/test", mediaId: "mock-media-id" },
+    ]);
 
     const ctx = await runPipeline({ categoryId: "cat1", apiConfig: mockConfig });
 
@@ -203,9 +227,12 @@ describe("runPipeline", () => {
     (reviewContent as ReturnType<typeof vi.fn>).mockResolvedValue({
       approved: true, issues: [], riskLevel: "low",
     });
-    (generateCoverPrompt as ReturnType<typeof vi.fn>).mockResolvedValue({
-      prompt: "cover", negativePrompt: "",
+    (generateIllustrations as ReturnType<typeof vi.fn>).mockResolvedValue({
+      coverPrompt: "cover", coverUrl: "https://example.com/cover.jpg", illustrations: [],
     });
+    (publishContent as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { platform: "wx", success: true, url: "https://mp.weixin.qq.com/s/test2" },
+    ]);
 
     const ctx = await runPipeline({ categoryId: "cat1", apiConfig: mockConfig });
 

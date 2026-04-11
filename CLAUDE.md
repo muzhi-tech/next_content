@@ -601,6 +601,26 @@ git commit -m "提交信息" && git push
 | 配图 | ✅ | 集成在 pipeline |
 | 发布 | ⚠️ | 集成在 pipeline (终点) |
 
+### Pipeline 类型 (PipelineType)
+
+```typescript
+type PipelineType = 'long-article' | 'sticker';
+```
+
+| 类型 | 说明 |
+|------|------|
+| `long-article` | 长文模式，完整 8 环节管道 |
+| `sticker` | 贴图模式，精简为 4 环节：采集→短文案→渲染生图→发布 |
+
+### 贴图相关模块
+
+| 模块 | 文件 | 状态 |
+|-----|------|------|
+| 短文案 Agent | `lib/agents/sticker-writer.ts` | ✅ |
+| 贴图生成组件 | `components/StickerGenerator/` | ✅ |
+| 贴图主题 | `components/StickerGenerator/themes.ts` | ✅ |
+| 贴图 API | `api/sticker/` | ✅ |
+
 ---
 
 ## 十一、文档同步规则

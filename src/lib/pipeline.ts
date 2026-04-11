@@ -25,6 +25,7 @@ import {
 import type { PipelineRun, PipelineStepResult, StyleProfile } from "@/lib/types";
 import { extractStyleProfile } from "./agents/style-extractor";
 import { generateIllustrations, type IllustrationResult } from "./agents/illustrate";
+import { publishContent, type PublishResults } from "./agents/publisher";
 
 export type PipelineStep = "collect" | "topic" | "write" | "score" | "humanize" | "review" | "illustrate" | "publish" | "microwriting" | "visualrender";
 
@@ -54,6 +55,7 @@ export interface PipelineContext {
   styleProfile?: StyleProfile;  // 采集文章的风格基因
   coverUrl?: string;              // 生成的封面图 URL
   illustrations?: Array<{ label: string; url?: string; prompt: string }>;  // 插图
+  publishResults?: PublishResults;  // 多平台发布结果
 }
 
 interface AIConfig {
@@ -395,27 +397,59 @@ export async function runPipeline(params: {
       }
     }
 
-    // Step 7: Publish
+    // Step 7: Publish (multi-platform via unified publisher)
     if (skipUntil <= 7) {
       checkTimeout();
       ctx.currentStep = "publish";
       emitEvent(onEvent, "step_start", ctx.id, { step: "publish", stepIndex: 7 });
       await persistStep(ctx.id, 7, { status: "running", startedAt: new Date().toISOString() });
       try {
-        const publishResult = await withTimeout(
-          executePublish(ctx.topic || "", ctx.content || "", ctx.coverPrompt || ""),
+        // Use unified multi-platform publisher (defaults to WeChat if no platforms specified)
+        const targetPlatforms: import("@/lib/types").Platform[] = ["wx"];
+        const publishResults = await withTimeout(
+          publishContent(targetPlatforms, {
+            topic: ctx.topic || "",
+            content: ctx.content || "",
+            coverPrompt: ctx.coverPrompt,
+            coverUrl: ctx.coverUrl,
+          }),
           STEP_TIMEOUT_MS, "publish"
         );
-        ctx.history.push(stepResult("publish", "success", { topic: ctx.topic, contentLength: ctx.content?.length || 0, coverPrompt: ctx.coverPrompt, url: publishResult.url }));
-        ctx.status = "completed";
-        await persistStep(ctx.id, 7, { status: "completed", output: JSON.stringify({ topic: ctx.topic, contentLength: ctx.content?.length || 0, url: publishResult.url }), completedAt: new Date().toISOString() });
-        await updatePipelineStatus(ctx.id, "completed", ctx.content);
-        emitEvent(onEvent, "step_complete", ctx.id, { step: "publish", stepIndex: 7, data: { topic: ctx.topic, contentLength: ctx.content?.length || 0, url: publishResult.url } });
-        emitEvent(onEvent, "pipeline_complete", ctx.id, { status: "completed", data: { topic: ctx.topic, contentLength: ctx.content?.length || 0, score: ctx.score, coverPrompt: ctx.coverPrompt, url: publishResult.url } });
-        // Auto-save generated content as draft
-        saveGeneratedContentFromPipeline(ctx).catch((err) => {
-          console.error("[pipeline] Auto-save generated content failed:", err);
-        });
+        ctx.publishResults = publishResults;
+        const wxResult = publishResults.find(r => r.platform === "wx");
+        const publishUrl = wxResult?.url;
+        const publishSuccess = publishResults.some(r => r.success);
+
+        ctx.history.push(stepResult("publish", publishSuccess ? "success" : "failed", {
+          topic: ctx.topic,
+          contentLength: ctx.content?.length || 0,
+          platforms: publishResults.map(r => `${r.platform}:${r.success ? "ok" : "fail"}`).join(","),
+          url: publishUrl,
+        }));
+
+        if (publishSuccess) {
+          ctx.status = "completed";
+          await persistStep(ctx.id, 7, {
+            status: "completed",
+            output: JSON.stringify({ topic: ctx.topic, contentLength: ctx.content?.length || 0, url: publishUrl, platforms: publishResults }),
+            completedAt: new Date().toISOString()
+          });
+          await updatePipelineStatus(ctx.id, "completed", ctx.content);
+          emitEvent(onEvent, "step_complete", ctx.id, { step: "publish", stepIndex: 7, data: { topic: ctx.topic, url: publishUrl, platforms: publishResults } });
+          emitEvent(onEvent, "pipeline_complete", ctx.id, { status: "completed", data: { topic: ctx.topic, contentLength: ctx.content?.length || 0, score: ctx.score, coverPrompt: ctx.coverPrompt, url: publishUrl, coverUrl: ctx.coverUrl } });
+          // Auto-save generated content as draft
+          saveGeneratedContentFromPipeline(ctx).catch((err) => {
+            console.error("[pipeline] Auto-save generated content failed:", err);
+          });
+        } else {
+          const errorMsg = publishResults.map(r => `${r.platform}: ${r.error}`).join("; ");
+          await persistStep(ctx.id, 7, { status: "failed", feedback: errorMsg, completedAt: new Date().toISOString() });
+          emitEvent(onEvent, "step_failed", ctx.id, { step: "publish", stepIndex: 7, error: errorMsg });
+          ctx.status = "failed";
+          await updatePipelineStatus(ctx.id, "failed", undefined, errorMsg);
+          emitEvent(onEvent, "pipeline_failed", ctx.id, { error: errorMsg });
+          return ctx;
+        }
       } catch (error) {
         ctx.history.push(stepResult("publish", "failed", undefined, error instanceof Error ? error.message : String(error)));
         await persistStep(ctx.id, 7, { status: "failed", feedback: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() });

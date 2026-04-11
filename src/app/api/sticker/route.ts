@@ -35,6 +35,8 @@ interface StickerPublishRequest {
   caption: string;
   imageUrls?: string[];
   author?: string;
+  stickerId?: string;  // 如果 pipeline 已保存草稿，传此 ID 进行 update
+  categoryId?: string;
 }
 
 /**
@@ -97,7 +99,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { title, slides, caption, imageUrls, author } = body;
+  const { title, slides, caption, imageUrls, author, stickerId: existingStickerId, categoryId } = body;
 
   // 参数验证
   if (!title || typeof title !== "string") {
@@ -193,23 +195,29 @@ export async function POST(request: NextRequest) {
     const wxUrl = mediaId ? `https://mp.weixin.qq.com/s/${mediaId}` : undefined;
 
     // 5. 保存贴图内容到数据库
-    let stickerId = "";
+    let savedStickerId = existingStickerId || "";
     try {
-      const sticker = await createStickerContent({
-        title,
-        slides,
-        caption,
-        status: "published",
-        categoryId: "", // 前端可以通过 query 参数传入
-      });
-      stickerId = sticker.id;
-
-      // 更新 wxMediaId 和 wxUrl
-      if (stickerId && mediaId) {
-        await updateStickerContent(stickerId, {
+      if (existingStickerId) {
+        // pipeline 已有草稿，更新它
+        await updateStickerContent(existingStickerId, {
+          title,
+          slides,
+          caption,
+          status: "published",
           wxMediaId: mediaId,
           wxUrl,
         });
+        savedStickerId = existingStickerId;
+      } else {
+        // 没有草稿，创建新记录
+        const sticker = await createStickerContent({
+          title,
+          slides,
+          caption,
+          status: "published",
+          categoryId: categoryId || "",
+        });
+        savedStickerId = sticker.id;
       }
     } catch (dbError) {
       console.error("Failed to save sticker content to database:", dbError);
@@ -222,7 +230,7 @@ export async function POST(request: NextRequest) {
       data: {
         mediaId,
         url: wxUrl,
-        stickerId,
+        stickerId: savedStickerId,
       },
     });
   } catch (error) {

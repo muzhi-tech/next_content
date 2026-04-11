@@ -181,6 +181,7 @@ export async function runPipeline(params: {
   resumeFromPipelineId?: string;
   type?: "long-article" | "sticker";  // 管道类型：长文 or 贴图
   humanApproval?: boolean;  // 选题后暂停等待人工确认
+  targetPlatforms?: string[];  // 目标发布平台，默认 ["wx"]
 }): Promise<PipelineContext> {
   const pipelineType = params.type || "long-article";
 
@@ -416,7 +417,7 @@ export async function runPipeline(params: {
       await persistStep(ctx.id, 7, { status: "running", startedAt: new Date().toISOString() });
       try {
         // Use unified multi-platform publisher (defaults to WeChat if no platforms specified)
-        const targetPlatforms: import("@/lib/types").Platform[] = ["wx"];
+        const targetPlatforms: import("@/lib/types").Platform[] = (params.targetPlatforms as import("@/lib/types").Platform[]) || ["wx"];
         const publishResults = await withTimeout(
           publishContent(targetPlatforms, {
             topic: ctx.topic || "",
@@ -489,6 +490,7 @@ export async function runPipeline(params: {
 export async function resumePipeline(params: {
   pipelineId: string;
   approvedTopic?: string;
+  targetPlatforms?: string[];
   onEvent?: PipelineEventHandler;
 }): Promise<PipelineContext> {
   const run = await getPipelineRun(params.pipelineId);
@@ -510,8 +512,13 @@ export async function resumePipeline(params: {
     matchedPages: [],
   };
 
-  // Restore collected articles
+  // Restore collected articles and re-extract style profile
   const collectedArticles = await executeCollect(ctx.categoryId);
+  try {
+    ctx.styleProfile = await extractStyleProfile({ apiUrl: apiConfig.apiUrl, apiKey: apiConfig.apiKey, modelName: apiConfig.modelName }, collectedArticles);
+  } catch (e) {
+    console.warn("[resumePipeline] Style extraction failed, continuing without:", e);
+  }
 
   // Update pipeline status back to running
   await updatePipelineStatus(ctx.id, "running");
@@ -613,7 +620,7 @@ export async function resumePipeline(params: {
     emitEvent(params.onEvent, "step_start", ctx.id, { step: "publish", stepIndex: 7 });
     await persistStep(ctx.id, 7, { status: "running", startedAt: new Date().toISOString() });
     try {
-      const targetPlatforms: import("@/lib/types").Platform[] = ["wx"];
+      const targetPlatforms: import("@/lib/types").Platform[] = (params.targetPlatforms as import("@/lib/types").Platform[]) || ["wx"];
       const publishResults = await withTimeout(
         publishContent(targetPlatforms, {
           topic: ctx.topic || "",

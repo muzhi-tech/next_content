@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  let body: { categoryId?: string; keywordId?: string; stream?: boolean; resumeFromPipelineId?: string; humanApproval?: boolean };
+  let body: { categoryId?: string; keywordId?: string; stream?: boolean; resumeFromPipelineId?: string; humanApproval?: boolean; targetPlatforms?: string[] };
   try {
     body = await request.json();
   } catch {
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { categoryId, keywordId, stream: useSSE, resumeFromPipelineId, humanApproval } = body;
+  const { categoryId, keywordId, stream: useSSE, resumeFromPipelineId, humanApproval, targetPlatforms } = body;
 
   if (!categoryId && !resumeFromPipelineId) {
     return NextResponse.json(
@@ -84,6 +84,7 @@ export async function POST(request: NextRequest) {
         keywordId,
         resumeFromPipelineId,
         humanApproval,
+        targetPlatforms,
         apiConfig: {
           apiUrl: apiConfig.apiUrl,
           apiKey: apiConfig.apiKey,
@@ -204,6 +205,7 @@ export async function POST(request: NextRequest) {
         keywordId,
         resumeFromPipelineId,
         humanApproval,
+        targetPlatforms,
         apiConfig: {
           apiUrl: apiConfig.apiUrl,
           apiKey: apiConfig.apiKey,

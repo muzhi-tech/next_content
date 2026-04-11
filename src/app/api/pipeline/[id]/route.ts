@@ -49,7 +49,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    let body: { action?: string; topic?: string; stream?: boolean };
+    let body: { action?: string; topic?: string; stream?: boolean; targetPlatforms?: string[] };
     try {
       body = await request.json();
     } catch {
@@ -59,7 +59,7 @@ export async function PATCH(
       );
     }
 
-    const { action, topic, stream: useSSE } = body;
+    const { action, topic, stream: useSSE, targetPlatforms } = body;
 
     if (action === "approve-topic") {
       const run = await getPipelineRun(params.id);
@@ -75,6 +75,7 @@ export async function PATCH(
         const ctx = await resumePipeline({
           pipelineId: params.id,
           approvedTopic: topic,
+          targetPlatforms,
         });
 
         return NextResponse.json({
@@ -126,6 +127,7 @@ export async function PATCH(
           resumePipeline({
             pipelineId: params.id,
             approvedTopic: topic,
+            targetPlatforms,
             onEvent,
           })
             .catch((error) => {

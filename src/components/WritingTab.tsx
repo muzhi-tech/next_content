@@ -397,12 +397,9 @@ export default function WritingTab({ categoryId }: Props) {
         signal: abortController.signal,
         body: JSON.stringify({
           categoryId,
-          keyword: contentTopic,
-          useWiki: useWiki || undefined,
-          wikiMode: useWiki ? wikiMode : undefined,
-          apiUrl: defaultConfig.apiUrl,
-          apiKey: defaultConfig.apiKey,
-          modelName: defaultConfig.modelName,
+          keywordId: contentTopic,
+          stream: true,
+          humanApproval: true,
         }),
       });
 

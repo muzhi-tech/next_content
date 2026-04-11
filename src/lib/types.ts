@@ -314,6 +314,17 @@ export interface GeneratedContent {
 
 export type CollectionLogStatus = 'success' | 'failed' | 'partial';
 
+// ==================== AI 配置相关类型 ====================
+
+/**
+ * AI API 调用配置
+ */
+export interface AIConfig {
+  apiUrl?: string;
+  apiKey?: string;
+  modelName?: string;
+}
+
 export interface CollectionLog {
   id: string;
   categoryId?: string;

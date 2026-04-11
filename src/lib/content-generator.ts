@@ -3,15 +3,11 @@
  * 封装 AI API 调用，支持 OpenAI 兼容接口
  */
 
+import type { AIConfig } from "./types";
+
 // 默认配置（可以从环境变量读取）
 const DEFAULT_API_URL = process.env.OPENAI_API_URL || "https://api.openai.com/v1";
 const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
-
-interface AIConfig {
-  apiUrl?: string;
-  apiKey?: string;
-  modelName?: string;
-}
 
 /**
  * 构建 API 端点

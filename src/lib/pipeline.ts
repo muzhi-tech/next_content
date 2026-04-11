@@ -21,7 +21,8 @@ import {
   listPipelineRuns,
   createGeneratedContent,
 } from "@/lib/db";
-import type { PipelineRun, PipelineStepResult } from "@/lib/types";
+import type { PipelineRun, PipelineStepResult, AIConfig } from "@/lib/types";
+import { generateId } from "@/lib/utils";
 
 export type PipelineStep = "collect" | "topic" | "write" | "score" | "humanize" | "review" | "illustrate" | "publish" | "microwriting" | "visualrender";
 
@@ -48,22 +49,12 @@ export interface PipelineContext {
   stickerData?: StickerOutput;  // 贴图模式输出
 }
 
-interface AIConfig {
-  apiUrl?: string;
-  apiKey?: string;
-  modelName?: string;
-}
-
 const STEP_ORDER: PipelineStep[] = ["collect", "topic", "write", "score", "humanize", "review", "illustrate", "publish"];
 
 const MAX_WRITE_RETRIES = 3;
 
 const STEP_TIMEOUT_MS = 60_000;
 const PIPELINE_TIMEOUT_MS = 10 * 60_000;
-
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
 
 function stepResult(step: PipelineStep, status: "success" | "failed" | "skipped", data?: Record<string, unknown>, error?: string): StepResult {
   return { step, status, data, error, timestamp: new Date().toISOString() };

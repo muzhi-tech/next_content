@@ -10,6 +10,7 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import type { Keyword, Article, Platform, ApiConfig, Persona, Style, KnowledgeBase, WxTemplate, Category, Report, PipelineRun, PipelineStepResult, GeneratedContent, ContentStatus, ContentSourceType, CollectionLog, CollectionLogStatus } from "./types";
+import { generateId } from "./utils";
 
 const DB_PATH = path.join(process.cwd(), "data", "content.db");
 
@@ -210,10 +211,6 @@ function initSchema(db: Database.Database): void {
   if (!cfgCols.includes('isDefaultImage')) {
     db.exec("ALTER TABLE api_configs ADD COLUMN isDefaultImage INTEGER DEFAULT 0");
   }
-}
-
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
 
 // Row → Object helpers (parse JSON columns)

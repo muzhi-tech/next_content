@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { fetchAccessToken, uploadImageMaterial, publishStickerDraft } from "@/lib/wechat";
+import { createStickerContent, updateStickerContent } from "@/lib/db";
 import type { StickerSlide } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -189,13 +190,39 @@ export async function POST(request: NextRequest) {
     }
 
     const mediaId = result.media_id || "";
+    const wxUrl = mediaId ? `https://mp.weixin.qq.com/s/${mediaId}` : undefined;
+
+    // 5. 保存贴图内容到数据库
+    let stickerId = "";
+    try {
+      const sticker = await createStickerContent({
+        title,
+        slides,
+        caption,
+        status: "published",
+        categoryId: "", // 前端可以通过 query 参数传入
+      });
+      stickerId = sticker.id;
+
+      // 更新 wxMediaId 和 wxUrl
+      if (stickerId && mediaId) {
+        await updateStickerContent(stickerId, {
+          wxMediaId: mediaId,
+          wxUrl,
+        });
+      }
+    } catch (dbError) {
+      console.error("Failed to save sticker content to database:", dbError);
+      // 不阻断发布流程，仅记录错误
+    }
 
     return NextResponse.json({
       code: 0,
       msg: "贴图草稿发布成功",
       data: {
         mediaId,
-        url: mediaId ? `https://mp.weixin.qq.com/cgi-bin/fin?action=getfile&token=${mediaId}` : undefined,
+        url: wxUrl,
+        stickerId,
       },
     });
   } catch (error) {

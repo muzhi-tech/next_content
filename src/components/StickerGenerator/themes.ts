@@ -77,27 +77,27 @@ export const ASPECT_RATIOS = [
 export type AspectRatioId = (typeof ASPECT_RATIOS)[number]["id"];
 
 /**
- * 默认贴纸数据
+ * 默认贴纸数据（对齐 backend StickerContent 接口）
  */
 export const DEFAULT_STICKER_DATA = {
-  title: "每日分享",
-  caption: "坚持自律，遇见更好的自己",
+  title: "职场人必看的成长法则",
+  caption: "评论区告诉我，你做到了几条？",
   slides: [
     {
-      emoji: "💪",
-      text: "坚持自律，遇见更好的自己",
+      heading: "持续学习",
+      content: "每天进步1%，一年后领先37倍",
     },
     {
-      emoji: "📚",
-      text: "每天进步一点点",
+      heading: "主动承担",
+      content: "多走一步，才能多看一眼",
     },
     {
-      emoji: "🎯",
-      text: "设定目标，全力以赴",
+      heading: "复盘反思",
+      content: "不做复盘的努力，都是白费",
     },
     {
-      emoji: "🌟",
-      text: "相信自己，你可以的",
+      heading: "建立人脉",
+      content: "你的收入是身边5个人的平均值",
     },
   ],
 };

@@ -108,10 +108,10 @@ Use delegation mode: team lead coordinates only, does not implement directly.
 
 ### 当前默认开发范围
 
-**六轮迭代已完成全部核心功能。当前进入稳定维护阶段。**
+**九轮迭代已完成全部核心功能。当前进入稳定维护阶段。**
 
 **已完成：**
-- 首页 + 8+ Tab 导航
+- 首页 + 10+ Tab 导航
 - 关键词管理 + 分类 CRUD
 - 文章采集 + 存储 (小红书/公众号)
 - AI 内容生成/写作/标题/封面 (SSE 流式)
@@ -212,7 +212,7 @@ data/
   content.db                    # SQLite 数据库文件 (替代旧 JSON)
 ```
 
-### 实际 Tab 导航 (8+)
+### 实际 Tab 导航 (10+)
 
 | Tab | 组件 | 说明 |
 |-----|------|------|
@@ -223,6 +223,8 @@ data/
 | Wiki | WikiTab | 知识引擎浏览与查询 |
 | 账号空间 | AccountSpaceTab | 人设/风格/知识库/模板 |
 | 内容历史 | ContentHistoryTab | AI 生成内容持久化 (T6-03) |
+| 数据分析 | AnalyticsTab | 数据分析与统计看板 |
+| 公众号排版 | TypesetTab | 微信公众号排版工具 |
 | 图片 | ImageTab | 图片相关 |
 | 系统设置 | SystemSettingsTab | 系统配置 |
 
@@ -376,7 +378,7 @@ data/
 - 分页字段（page、pageSize、total）
 - 筛选与排序字段
 
-### 已实现 API 端点 (2026-04-09 完成)
+### 已实现 API 端点 (2026-04-11 完成)
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
@@ -385,8 +387,10 @@ data/
 | `/api/articles` | GET | 文章列表 (分页/平台/关键词/日期筛选) |
 | `/api/categories` | GET/POST | 分类 CRUD |
 | `/api/categories/[id]` | GET/PUT/DELETE | 分类详情/更新/删除 |
-| `/api/platforms/xhs` | GET | 小红书搜索 |
-| `/api/platforms/wx` | GET | 公众号文章 |
+| `/api/platforms/xhs` | GET | 小红书搜索 (原始) |
+| `/api/platforms/xhs-search` | GET | 小红书搜索 (标准) |
+| `/api/platforms/wx` | GET | 公众号文章 (原始) |
+| `/api/platforms/wx-search` | GET | 公众号文章 (标准) |
 | `/api/content/generate` | POST | AI 内容生成 (SSE) |
 | `/api/content/write` | POST | AI 写作 (SSE) |
 | `/api/content/titles` | POST | AI 标题生成 |
@@ -397,11 +401,12 @@ data/
 | `/api/report/list` | GET | 报告列表 |
 | `/api/report/generate` | POST | 报告生成 |
 | `/api/wiki/ingest` | POST | Wiki 内容摄入 |
+| `/api/wiki/upload` | POST | Wiki 文件上传 |
 | `/api/wiki/[categoryId]` | GET | Wiki 分类查询 |
 | `/api/wiki/query` | POST | Wiki 语义查询 |
 | `/api/wiki/lint` | POST | Wiki 质量检查 |
 | `/api/wiki/index` | POST | Wiki 索引构建 |
-| `/api/pipeline` | POST | 创建 8 环节管道 |
+| `/api/pipeline` | GET/POST | 管道列表/创建 |
 | `/api/pipeline/[id]` | GET | 管道状态 |
 | `/api/account-space/personas` | CRUD | 人设管理 |
 | `/api/account-space/styles` | CRUD | 文风风格 |
@@ -413,6 +418,11 @@ data/
 | `/api/collection-logs` | GET | 采集日志 (T6-06) |
 | `/api/wx-articles` | GET | 公众号文章 |
 | `/api/refresh` | POST | 刷新采集 (含 autoIngest, T6-05) |
+| `/api/health` | GET | 健康检查 |
+| `/api/analytics/dashboard` | GET | 数据看板 |
+| `/api/analytics/pipeline-status` | GET | 管道状态统计 |
+| `/api/analytics/agent-stats` | GET | Agent 统计 |
+| `/api/sticker` | POST | 贴图生成 |
 
 ---
 
@@ -528,7 +538,7 @@ git commit -m "提交信息" && git push
 
 ---
 
-## 十、迭代开发历史 (六轮全部完成)
+## 十、迭代开发历史 (九轮全部完成)
 
 ### ✅ 第一迭代 (P0安全修复 + P1核心功能 + P2增强)
 - Token 修复、路由去重、8 环节管道、报告持久化、Wiki 浏览 UI
@@ -551,6 +561,21 @@ git commit -m "提交信息" && git push
 - ContentHistoryTab、内容自动保存草稿
 - 定时调度 (scheduler.ts + node-cron)、autoIngest 修复
 - 调度配置 UI + 采集日志
+
+### ✅ 第七迭代 (数据分析 + 管道增强)
+- AnalyticsTab 数据分析面板
+- 管道状态持久化 (pipeline_runs 表 type 字段)
+- 微信公众号排版工具 TypesetTab
+
+### ✅ 第八迭代 (贴图管道 + 短文案 Agent)
+- sticker-pipeline 贴图模式支持
+- 贴图短文案 Agent (lib/agents/sticker-writer.ts)
+- StickerGenerator 组件 + themes 主题系统
+
+### ✅ 第九迭代 (贴图生成 + 微信发布)
+- /api/sticker 贴图生成 API
+- 贴图内容独立表结构
+- 微信公众号发布接口适配
 
 ### Wiki 知识引擎 (未在原始设计中，已完整实现)
 

@@ -209,6 +209,7 @@ export async function runPipeline(params: {
   const run: PipelineRun = {
     id: ctx.id,
     categoryId: params.categoryId,
+    type: pipelineType,
     status: "running",
     steps: buildInitialSteps(),
     currentStepIndex: skipUntil,

@@ -3,14 +3,14 @@ import React from "react";
 import type { TemplateId, ThemeConfig } from "./themes";
 
 /**
- * 贴纸数据结构
+ * 贴纸数据结构（对齐 backend StickerContent 接口）
  */
 export interface StickerData {
   title: string;
   caption?: string;
   slides: Array<{
-    emoji?: string;
-    text: string;
+    heading: string;  // 副标题
+    content: string;  // 一句话核心观点
   }>;
 }
 
@@ -18,15 +18,13 @@ export interface StickerData {
  * 单张贴纸组件
  */
 function StickerCard({
-  emoji,
-  text,
+  heading,
+  content,
   theme,
-  index,
 }: {
-  emoji?: string;
-  text: string;
+  heading: string;
+  content: string;
   theme: ThemeConfig;
-  index: number;
 }) {
   return (
     <div
@@ -44,22 +42,20 @@ function StickerCard({
         style={{ background: theme.accentColor }}
       />
 
-      {/* Emoji */}
-      {emoji && (
-        <div
-          className="text-4xl mb-3 animate-bounce"
-          style={{ animationDuration: "2s" }}
-        >
-          {emoji}
-        </div>
-      )}
+      {/* 副标题 */}
+      <p
+        className="text-sm font-medium uppercase tracking-wider mb-2"
+        style={{ color: theme.accentColor }}
+      >
+        {heading}
+      </p>
 
-      {/* 文字 */}
+      {/* 核心内容 */}
       <p
         className="text-lg font-bold leading-relaxed max-w-full"
         style={{ color: theme.primaryText, wordBreak: "break-word" }}
       >
-        {text}
+        {content}
       </p>
 
       {/* 底部装饰 */}
@@ -108,10 +104,9 @@ export function QuotesTemplate({
         {data.slides.map((slide, index) => (
           <StickerCard
             key={index}
-            emoji={slide.emoji}
-            text={slide.text}
+            heading={slide.heading}
+            content={slide.content}
             theme={theme}
-            index={index}
           />
         ))}
       </div>
@@ -182,14 +177,17 @@ export function WorkplaceTemplate({
               borderLeft: `4px solid ${theme.accentColor}`,
             }}
           >
-            {slide.emoji && (
-              <div className="text-3xl mb-2">{slide.emoji}</div>
-            )}
+            <p
+              className="text-xs font-medium uppercase tracking-wider mb-1"
+              style={{ color: theme.accentColor }}
+            >
+              {slide.heading}
+            </p>
             <p
               className="text-sm font-medium leading-snug"
               style={{ color: theme.primaryText }}
             >
-              {slide.text}
+              {slide.content}
             </p>
           </div>
         ))}
@@ -255,14 +253,17 @@ export function HealthTemplate({
               className="absolute top-0 left-0 w-12 h-12 rounded-br-full opacity-30"
               style={{ background: theme.accentColor }}
             />
-            {slide.emoji && (
-              <div className="text-4xl mb-2 relative z-10">{slide.emoji}</div>
-            )}
+            <p
+              className="text-sm font-medium uppercase tracking-wider mb-1 relative z-10"
+              style={{ color: theme.accentColor }}
+            >
+              {slide.heading}
+            </p>
             <p
               className="text-base font-semibold leading-snug relative z-10"
               style={{ color: theme.primaryText }}
             >
-              {slide.text}
+              {slide.content}
             </p>
           </div>
         ))}

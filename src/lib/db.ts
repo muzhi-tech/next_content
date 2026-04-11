@@ -133,6 +133,7 @@ function initSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS pipeline_runs (
       id TEXT PRIMARY KEY,
       categoryId TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'long-article',
       status TEXT NOT NULL,
       steps TEXT NOT NULL DEFAULT '[]',
       currentStepIndex INTEGER DEFAULT 0,
@@ -210,6 +211,12 @@ function initSchema(db: Database.Database): void {
   if (!cfgCols.includes('isDefaultImage')) {
     db.exec("ALTER TABLE api_configs ADD COLUMN isDefaultImage INTEGER DEFAULT 0");
   }
+
+  // Migrate: add type column to existing pipeline_runs table
+  const prCols = (db.prepare("PRAGMA table_info(pipeline_runs)").all() as any[]).map(c => c.name);
+  if (!prCols.includes('type')) {
+    db.exec("ALTER TABLE pipeline_runs ADD COLUMN type TEXT DEFAULT 'long-article'");
+  }
 }
 
 function generateId(): string {
@@ -228,7 +235,7 @@ function rowToReport(row: any): Report {
   return { ...row, topics: JSON.parse(row.topics || '[]') };
 }
 function rowToPipelineRun(row: any): PipelineRun {
-  return { ...row, steps: JSON.parse(row.steps || '[]') };
+  return { ...row, type: row.type || 'long-article', steps: JSON.parse(row.steps || '[]') };
 }
 function rowToCategory(row: any): Category {
   return {
@@ -784,8 +791,8 @@ export async function getPipelineRun(id: string): Promise<PipelineRun | null> {
 export async function createPipelineRun(run: PipelineRun): Promise<PipelineRun> {
   const db = getDB();
   db.prepare(
-    "INSERT INTO pipeline_runs (id, categoryId, status, steps, currentStepIndex, result, error, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(run.id, run.categoryId, run.status, JSON.stringify(run.steps), run.currentStepIndex, run.result || null, run.error || null, run.createdAt, run.updatedAt);
+    "INSERT INTO pipeline_runs (id, categoryId, type, status, steps, currentStepIndex, result, error, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(run.id, run.categoryId, run.type || 'long-article', run.status, JSON.stringify(run.steps), run.currentStepIndex, run.result || null, run.error || null, run.createdAt, run.updatedAt);
   return run;
 }
 

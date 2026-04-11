@@ -225,6 +225,7 @@ export interface PipelineStepResult {
 export interface PipelineRun {
   id: string;
   categoryId: string;
+  type?: PipelineType;
   status: 'running' | 'completed' | 'failed' | 'paused';
   steps: PipelineStepResult[];
   currentStepIndex: number;
@@ -326,3 +327,45 @@ export interface CollectionLog {
   startedAt: number;
   completedAt?: number;
 }
+
+// ==================== 第九轮迭代：贴图（微信小绿书）流水线 ====================
+
+/**
+ * 贴图短文案结构（sticker-writer.ts 输出）
+ */
+export interface StickerSlide {
+  heading: string;   // 副标题
+  content: string;   // 一句话核心观点
+}
+
+export interface StickerContent {
+  title: string;     // 封面大标题（极具吸引力）
+  slides: StickerSlide[];  // 3-8 个分项
+  caption: string;   // 底部配套短文案（含吐槽/钩子问题）
+}
+
+/**
+ * 贴图发布请求
+ */
+export interface StickerPublishRequest {
+  title: string;           // 封面大标题
+  slides: StickerSlide[];  // 分项内容
+  caption: string;         // 底部短文案
+  imageUrls?: string[];    // 生成的图片 URL 列表（可选，前端渲染后上传）
+  author?: string;          // 作者名称（可选）
+}
+
+/**
+ * 贴图发布响应
+ */
+export interface StickerPublishResponse {
+  success: boolean;
+  mediaId?: string;        // 微信返回的 media_id
+  url?: string;            // 草稿预览 URL
+  error?: string;
+}
+
+/**
+ * Pipeline 类型（支持长文和贴图两种模式）
+ */
+export type PipelineType = 'long-article' | 'sticker';

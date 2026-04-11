@@ -274,13 +274,13 @@ export default function StickerGenerator() {
           <summary className="cursor-pointer font-medium">JSON 结构说明</summary>
           <pre className="mt-2 p-3 bg-gray-50 rounded-lg overflow-x-auto">
 {`{
-  "title": "主标题",
-  "caption": "底部标语（可选）",
+  "title": "主标题（极具吸引力）",
+  "caption": "底部配套短文案（含吐槽/钩子问题）",
   "slides": [
-    { "emoji": "😀", "text": "第一张内容" },
-    { "emoji": "😀", "text": "第二张内容" },
-    { "emoji": "😀", "text": "第三张内容" },
-    { "emoji": "😀", "text": "第四张内容" }
+    { "heading": "副标题1", "content": "一句话核心观点1" },
+    { "heading": "副标题2", "content": "一句话核心观点2" },
+    { "heading": "副标题3", "content": "一句话核心观点3" },
+    { "heading": "副标题4", "content": "一句话核心观点4" }
   ]
 }`}
           </pre>

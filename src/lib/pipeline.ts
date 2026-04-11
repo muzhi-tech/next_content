@@ -1179,4 +1179,4 @@ async function saveStickerContentFromPipeline(ctx: PipelineContext): Promise<voi
   }
 }
 
-export { listPipelineRuns, resumePipeline };
+export { listPipelineRuns };

@@ -337,3 +337,49 @@ export interface CollectionLog {
   startedAt: number;
   completedAt?: number;
 }
+
+// ==================== 数据分析相关类型 ====================
+
+export interface PlatformDistribution {
+  platform: string;
+  count: number;
+}
+
+export interface CollectionTrend {
+  date: string;
+  count: number;
+}
+
+export interface ContentStatusCount {
+  status: string;
+  count: number;
+}
+
+export interface TopKeyword {
+  keywordId: string;
+  keywordName: string;
+  articleCount: number;
+}
+
+export interface DashboardData {
+  totalArticles: number;
+  weeklyArticles: number;
+  generatedContentTotal: number;
+  platformDistribution: PlatformDistribution[];
+  collectionTrend: CollectionTrend[];
+  generatedContentStats: {
+    total: number;
+    byStatus: ContentStatusCount[];
+  };
+  topKeywords: TopKeyword[];
+}
+
+export interface AgentStat {
+  key: string;
+  name: string;
+  triggered: number;
+  success: number;
+  failed: number;
+  successRate: number;
+  avgDuration: number;
+}

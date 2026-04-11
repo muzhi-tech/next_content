@@ -23,6 +23,7 @@ import {
 } from "@/lib/db";
 import type { PipelineRun, PipelineStepResult, AIConfig } from "@/lib/types";
 import { generateId } from "@/lib/utils";
+import { TOPIC_SYSTEM_PROMPT, WRITE_SYSTEM_PROMPT } from "./prompts/topic";
 
 export type PipelineStep = "collect" | "topic" | "write" | "score" | "humanize" | "review" | "illustrate" | "publish" | "microwriting" | "visualrender";
 
@@ -473,13 +474,7 @@ async function executeCollect(categoryId: string, keywordId?: string): Promise<A
 async function executeTopic(config: AIConfig, articles: Array<{ title: string; content: string; platform: string }>): Promise<string> {
   const summaries = articles.slice(0, 20).map((a, i) => `${i + 1}. [${a.platform}] ${a.title}`).join("\n");
   const raw = await createChatCompletionJSON(config, [
-    { role: "system", content: `你是一位深谙卡兹克（Khazix）爆款逻辑的内容策略分析师。请根据以下热门文章数据，运用 HKR质检法 分析出一个最有价值的公众号长文选题方向。
-HKR质检法要求：
-- H (Happy)：足够有趣、有悬念，标题能让人好奇想点开。
-- K (Knowledge)：有信息量，看完能学到新东西或新视角。
-- R (Resonance)：能戳中情绪，让人产生共鸣。
-
-请直接返回选题标题，不要返回其他内容。标题要具体、有吸引力、自带"活人感"和口语化特征，拒绝宏大叙事和套话。` },
+    { role: "system", content: TOPIC_SYSTEM_PROMPT },
     { role: "user", content: `热门文章：\n${summaries}` },
   ]);
   return raw.trim();
@@ -492,48 +487,16 @@ async function executeWrite(config: AIConfig, topic: string, articles: Array<{ t
   if (useWiki && categoryId) {
     try {
       const { buildWikiContext, resolveRelevantWikiPages } = await import('./wiki-query');
-      const slugs = await resolveRelevantWikiPages(categoryId, topic, config as any);
+      const slugs = await resolveRelevantWikiPages(categoryId, topic, config);
       matchedPages = slugs;
-      wikiContext = await buildWikiContext(categoryId, topic, config as any);
+      wikiContext = await buildWikiContext(categoryId, topic, config);
       if (ctx) ctx.matchedPages = matchedPages;
     } catch (e) {
       console.error('Wiki context not available:', e);
     }
   }
 
-  let systemPrompt = `你正在以「数字生命卡兹克」的身份写一篇公众号长文。文章风格一句话概括："有见识的普通人在认真聊一件打动他的事。"
-
-【核心价值观】
-- 永远对世界保持好奇。
-- 讲人话，像个活人。大胆使用"我觉得"、"我认为"，拥抱不完美。
-- 真诚，不骗人。
-
-【文章原型与叙事结构】
-- 判断这属于哪种文章原型，并侧重不同写法：
-  1. 调查实验型：核心是"我替你去做了这件事"，重在踩坑和发现的层层递进。
-  2. 产品体验型：核心是"跟我一起玩"，重在场景演示和真实感受。
-  3. 现象解读型：核心是"你注意到了吗？背后是什么？"，重在观察->好奇->研究->哲学升维。
-  4. 工具分享型：核心是"我发现了一个好东西"，重在故事铺垫->展示->效果惊艳。
-  5. 方法论分享型：核心是"我把压箱底的东西掏给你了"，必须有可执行建议和坦诚的失败点。
-- 英雄之旅叙事弧：先说困境或好奇 -> 尝试踩坑 -> 秀出让人「卧槽」的结果。
-- 逐一展示法（升番逻辑）：展示多个案例时，一轮比一轮离谱、惊喜，遵循sketch喜剧升番逻辑。
-
-【写作内核与节奏】
-- 节奏感：像跟朋友聊天。句子时长时短，用逗号制造口语化的停顿感。必须高频加入"扣主线句"。
-- 故意打破：在论述中加入口语打断（如"我当时就..."），省略主语。
-- 知识掉落：知识是"聊着聊着顺手掏出来"的。
-- 亲自下场：让读者感觉到你真的做了这件事。
-- 回环呼应（契诃夫之枪）：前面埋钩子，结尾callback呼应。
-- 推荐使用口语词："坦率的讲"、"说真的"、"我当时就愣住了"、"这玩意"、"不是哥们"。
-
-【绝对禁区（必须遵守）】
-1. 禁用套话："首先...其次...最后"、"综上所述"、"值得注意的是"、"本质上"、"换句话说"。
-2. 禁用冒号"："，用逗号代替；禁用破折号"——"；不用双引号，强调时用「」。
-3. 避免过度结构化，不使用 bullet point 罗列观点（除非是分步教程）。
-4. 拒绝教科书开头，必须从具体的事件或场景切入。
-
-字数要求：1500-2500 字。
-请根据给定选题，融合以上风格完成创作。不要返回除了文章正文外的多余对话。`;
+  let systemPrompt = WRITE_SYSTEM_PROMPT;
 
   if (wikiContext) {
     systemPrompt += `\n\n【Wiki知识库参考资料】\n你可以从以下知识库检索到的信息中提取论据或佐证，但请用你自己的卡兹克风格内化表达，绝不直接复制拼凑：\n\n${wikiContext}`;
@@ -596,8 +559,9 @@ async function executePublish(topic: string, content: string, coverPrompt: strin
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     return { url: "https://mp.weixin.qq.com/s/mock-article-url-after-token-fetch" };
-  } catch (err: any) {
-    throw new Error(`公众号发布失败: ${err.message}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`公众号发布失败: ${msg}`);
   }
 }
 
@@ -618,7 +582,7 @@ async function runStickerPipeline(params: {
   const pipelineStart = Date.now();
 
   const ctx: PipelineContext = {
-    id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+    id: generateId(),
     categoryId: params.categoryId,
     currentStep: "collect",
     status: "running",
@@ -627,9 +591,6 @@ async function runStickerPipeline(params: {
   };
 
   let collectedArticles: Array<{ title: string; content: string; platform: string }> = [];
-
-  const PIPELINE_TIMEOUT_MS = 10 * 60_000;
-  const STEP_TIMEOUT_MS = 60_000;
 
   const checkTimeout = () => {
     if (Date.now() - pipelineStart > PIPELINE_TIMEOUT_MS) {

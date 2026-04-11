@@ -47,6 +47,8 @@ export interface PipelineContext {
   history: StepResult[];
   retryCount: number;
   stickerData?: StickerOutput;  // 贴图模式输出
+  reviewRetryCount: number;     // 审核重试次数
+  reviewIssues?: string[];      // 审核反馈问题
 }
 
 interface AIConfig {
@@ -58,6 +60,7 @@ interface AIConfig {
 const STEP_ORDER: PipelineStep[] = ["collect", "topic", "write", "score", "humanize", "review", "illustrate", "publish"];
 
 const MAX_WRITE_RETRIES = 3;
+const MAX_REVIEW_RETRIES = 2;
 
 const STEP_TIMEOUT_MS = 60_000;
 const PIPELINE_TIMEOUT_MS = 10 * 60_000;
@@ -126,6 +129,7 @@ export async function getPipeline(id: string): Promise<PipelineContext | undefin
       ...(s.feedback ? { error: s.feedback } : {}),
     })),
     retryCount: 0,
+    reviewRetryCount: 0,
     topic: run.steps.find((s) => s.step === "topic")?.output,
     content: run.steps.find((s) => s.step === "write")?.output,
     score: run.steps.find((s) => s.step === "score")?.score,
@@ -185,6 +189,7 @@ export async function runPipeline(params: {
     status: "running",
     history: [],
     retryCount: 0,
+    reviewRetryCount: 0,
   };
 
   let collectedArticles: Array<{ title: string; content: string; platform: string }> = [];
@@ -314,26 +319,19 @@ export async function runPipeline(params: {
       }
     }
 
-    // Step 5: Review
+    // Step 5: Review (with retry loop: reject -> humanize with feedback -> re-review)
     if (skipUntil <= 5) {
       checkTimeout();
       ctx.currentStep = "review";
+      ctx.reviewRetryCount = 0;
       emitEvent(onEvent, "step_start", ctx.id, { step: "review", stepIndex: 5 });
       await persistStep(ctx.id, 5, { status: "running", startedAt: new Date().toISOString() });
       try {
-        const review = await withTimeout(
-          reviewContent(params.apiConfig, ctx.content || ""),
-          STEP_TIMEOUT_MS, "review"
-        );
-        ctx.history.push(stepResult("review", review.approved ? "success" : "failed", { approved: review.approved, riskLevel: review.riskLevel, issues: review.issues }));
-        await persistStep(ctx.id, 5, { status: review.approved ? "completed" : "failed", output: review.approved ? "approved" : "rejected", feedback: review.approved ? undefined : `risk=${review.riskLevel}, issues=${review.issues.length}`, completedAt: new Date().toISOString() });
-        if (review.approved) {
-          emitEvent(onEvent, "step_complete", ctx.id, { step: "review", stepIndex: 5, data: { approved: true } });
-        } else {
-          emitEvent(onEvent, "step_failed", ctx.id, { step: "review", stepIndex: 5, error: `Review rejected: risk=${review.riskLevel}` });
+        const reviewPassed = await executeReviewLoop(ctx, params.apiConfig, onEvent, checkTimeout);
+        if (!reviewPassed) {
           ctx.status = "failed";
-          await updatePipelineStatus(ctx.id, "failed", undefined, "Review rejected");
-          emitEvent(onEvent, "pipeline_failed", ctx.id, { error: "Review rejected" });
+          await updatePipelineStatus(ctx.id, "failed", undefined, "Review rejected after max retries");
+          emitEvent(onEvent, "pipeline_failed", ctx.id, { error: "Review rejected after max retries" });
           return ctx;
         }
       } catch (error) {
@@ -409,6 +407,69 @@ export async function runPipeline(params: {
   }
 
   return ctx;
+}
+
+/**
+ * Review loop: review -> (reject) -> humanize with feedback -> re-review
+ * Max retries: MAX_REVIEW_RETRIES
+ * Returns true if review passed, false if exhausted retries
+ */
+async function executeReviewLoop(
+  ctx: PipelineContext,
+  config: AIConfig,
+  onEvent?: PipelineEventHandler,
+  checkTimeout?: () => void,
+): Promise<boolean> {
+  while (ctx.reviewRetryCount <= MAX_REVIEW_RETRIES) {
+    checkTimeout?.();
+    const review = await withTimeout(
+      reviewContent(config, ctx.content || ""),
+      STEP_TIMEOUT_MS, "review"
+    );
+
+    if (review.approved) {
+      ctx.history.push(stepResult("review", "success", { approved: true, riskLevel: review.riskLevel, retryCount: ctx.reviewRetryCount }));
+      await persistStep(ctx.id, 5, { status: "completed", output: `approved (retry ${ctx.reviewRetryCount})`, completedAt: new Date().toISOString() });
+      emitEvent(onEvent, "step_complete", ctx.id, { step: "review", stepIndex: 5, data: { approved: true, retryCount: ctx.reviewRetryCount } });
+      return true;
+    }
+
+    // Review rejected
+    ctx.reviewIssues = review.issues;
+    ctx.history.push(stepResult("review", "failed", { approved: false, riskLevel: review.riskLevel, issues: review.issues, retry: ctx.reviewRetryCount }));
+    emitEvent(onEvent, "step_failed", ctx.id, { step: "review", stepIndex: 5, error: `Review rejected (attempt ${ctx.reviewRetryCount + 1}/${MAX_REVIEW_RETRIES + 1}): risk=${review.riskLevel}` });
+
+    if (ctx.reviewRetryCount >= MAX_REVIEW_RETRIES) {
+      await persistStep(ctx.id, 5, { status: "failed", output: "rejected", feedback: `risk=${review.riskLevel}, issues=${review.issues.length}, retries exhausted`, completedAt: new Date().toISOString() });
+      return false;
+    }
+
+    // Re-humanize with review feedback
+    ctx.reviewRetryCount++;
+    emitEvent(onEvent, "step_start", ctx.id, { step: "humanize", stepIndex: 4, data: { reason: "review_feedback", retry: ctx.reviewRetryCount } });
+    await persistStep(ctx.id, 4, { status: "running", startedAt: new Date().toISOString(), output: undefined, completedAt: undefined });
+    try {
+      const humanized = await withTimeout(
+        humanizeContent(config, ctx.content || "", review.issues),
+        STEP_TIMEOUT_MS, "humanize"
+      );
+      ctx.content = humanized.content;
+      ctx.history.push(stepResult("humanize", "success", { score: humanized.score, changes: humanized.changes.length, retry: ctx.reviewRetryCount, reason: "review_feedback" }));
+      await persistStep(ctx.id, 4, { status: "completed", output: `re-humanized (review retry ${ctx.reviewRetryCount}), score=${humanized.score}`, score: humanized.score, completedAt: new Date().toISOString() });
+      emitEvent(onEvent, "step_complete", ctx.id, { step: "humanize", stepIndex: 4, data: { score: humanized.score, retry: ctx.reviewRetryCount, reason: "review_feedback" } });
+    } catch (error) {
+      ctx.history.push(stepResult("humanize", "failed", undefined, error instanceof Error ? error.message : String(error)));
+      await persistStep(ctx.id, 4, { status: "completed", feedback: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() });
+      emitEvent(onEvent, "step_complete", ctx.id, { step: "humanize", stepIndex: 4, data: { error: error instanceof Error ? error.message : String(error) } });
+      // Continue to retry review even if re-humanize had issues
+    }
+
+    // Re-prepare review step for next iteration
+    await persistStep(ctx.id, 5, { status: "running", startedAt: new Date().toISOString(), output: undefined, completedAt: undefined });
+    emitEvent(onEvent, "step_start", ctx.id, { step: "review", stepIndex: 5, data: { retry: ctx.reviewRetryCount } });
+  }
+
+  return false;
 }
 
 async function executeWriteLoop(
@@ -760,6 +821,7 @@ async function runStickerPipeline(params: {
     status: "running",
     history: [],
     retryCount: 0,
+    reviewRetryCount: 0,
   };
 
   let collectedArticles: Array<{ title: string; content: string; platform: string }> = [];

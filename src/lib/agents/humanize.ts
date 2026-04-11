@@ -51,14 +51,17 @@ const HUMANIZE_SYSTEM_PROMPT = `你是一位精通「数字生命卡兹克（Kha
 
 export async function humanizeContent(
   config: AIConfig,
-  content: string
+  content: string,
+  reviewFeedback?: string[]
 ): Promise<HumanizeResult> {
+  let userPrompt = `请对以下文章进行去 AI 化处理：\n\n${content}`;
+  if (reviewFeedback && reviewFeedback.length > 0) {
+    userPrompt = `请对以下文章进行去 AI 化处理，并特别针对审核反馈中指出的所有问题逐一修正：\n\n【审核反馈（必须全部解决）】\n${reviewFeedback.map((fb, i) => `${i + 1}. ${fb}`).join("\n")}\n\n【待处理文章】\n${content}`;
+  }
+
   const raw = await createChatCompletionJSON(config, [
     { role: "system", content: HUMANIZE_SYSTEM_PROMPT },
-    {
-      role: "user",
-      content: `请对以下文章进行去 AI 化处理：\n\n${content}`,
-    },
+    { role: "user", content: userPrompt },
   ]);
 
   const result = parseJSON(raw) as HumanizeResult;

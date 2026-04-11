@@ -1198,7 +1198,7 @@ export async function createStickerContent(data: {
     `INSERT INTO sticker_contents (id, title, slides, caption, status, categoryId, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(id, data.title, JSON.stringify(data.slides), data.caption || '', data.status || 'draft', data.categoryId || '', now, now);
-  return { id, title: data.title, slides: data.slides, caption: data.caption || '', status: data.status || 'draft', categoryId: data.categoryId, createdAt: now, updatedAt: now };
+  return { id, title: data.title, slides: data.slides, caption: data.caption || '', status: (data.status || 'draft') as StickerContentRecord['status'], categoryId: data.categoryId, createdAt: now, updatedAt: now };
 }
 
 export async function updateStickerContent(

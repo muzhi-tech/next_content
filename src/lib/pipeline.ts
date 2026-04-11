@@ -938,7 +938,7 @@ async function executePublish(topic: string, content: string, coverPrompt: strin
   let stickerData: { title: string; slides: { heading: string; content: string }[]; caption: string } | null = null;
   try {
     stickerData = JSON.parse(content);
-    if (!stickerData.title || !stickerData.slides) {
+    if (!stickerData?.title || !stickerData?.slides) {
       stickerData = null;
     }
   } catch {

@@ -9,9 +9,9 @@ import { getDB, rowToKeyword } from "./shared";
 export async function getKeywords(categoryId?: string): Promise<Keyword[]> {
   const db = getDB();
   if (categoryId) {
-    return db.prepare("SELECT * FROM keywords WHERE categoryId = ?").all(categoryId).map(rowToKeyword);
+    return db.prepare("SELECT * FROM keywords WHERE categoryId = ?").all(categoryId).map((r) => rowToKeyword(r as Record<string, unknown>));
   }
-  return db.prepare("SELECT * FROM keywords").all().map(rowToKeyword);
+  return db.prepare("SELECT * FROM keywords").all().map((r) => rowToKeyword(r as Record<string, unknown>));
 }
 
 export async function getKeyword(id: string): Promise<Keyword | null> {

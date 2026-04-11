@@ -4,8 +4,8 @@
  * 实际实现已拆分到 src/lib/styles/ 目录。
  */
 
+export type { WritingStyle } from "./styles/index";
 export {
-  WritingStyle,
   STYLES,
   STYLE_LIST,
   getStyle,

@@ -1,4 +1,4 @@
-import { WikiIndexItem, ApiConfig } from "./types";
+import { WikiIndexItem, AIConfig } from "./types";
 import { getWikiIndex, readWikiPage, appendLog } from "./wiki";
 import { createChatCompletionJSON, parseJSON } from "./content-generator";
 
@@ -92,7 +92,7 @@ export async function searchWikiIndex(
 export async function resolveRelevantWikiPages(
   categoryId: string,
   topic: string,
-  config: ApiConfig,
+  config: AIConfig,
   keywords?: string[]
 ): Promise<string[]> {
   // 获取所有候选项（使用空 query 获取全部，或者直接解析 index）
@@ -181,7 +181,7 @@ ${candidateList}
 export async function buildWikiContext(
   categoryId: string,
   topic: string,
-  config: ApiConfig,
+  config: AIConfig,
   keywords?: string[]
 ): Promise<string> {
   const slugs = await resolveRelevantWikiPages(

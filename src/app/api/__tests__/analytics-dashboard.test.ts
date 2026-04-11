@@ -53,6 +53,7 @@ describe("GET /api/analytics/dashboard", () => {
       comments: 5,
       collectedAt: now,
       publishedAt: now,
+      extra: {},
     });
     await saveArticle({
       keywordId: "kw1",
@@ -65,6 +66,8 @@ describe("GET /api/analytics/dashboard", () => {
       likes: 20,
       comments: 10,
       collectedAt: now - 8 * 24 * 60 * 60 * 1000, // 8 days ago, not this week
+      publishedAt: now - 8 * 24 * 60 * 60 * 1000,
+      extra: {},
     });
 
     const request = new Request("http://localhost/api/analytics/dashboard");
@@ -91,6 +94,7 @@ describe("GET /api/analytics/dashboard", () => {
       comments: 5,
       collectedAt: now,
       publishedAt: now,
+      extra: {},
     });
     await saveArticle({
       keywordId: "kw1",
@@ -104,6 +108,7 @@ describe("GET /api/analytics/dashboard", () => {
       comments: 10,
       collectedAt: now,
       publishedAt: now,
+      extra: {},
     });
 
     const request = new Request("http://localhost/api/analytics/dashboard");
@@ -161,6 +166,7 @@ describe("GET /api/analytics/dashboard", () => {
       comments: 5,
       collectedAt: now,
       publishedAt: now,
+      extra: {},
     });
     await saveArticle({
       keywordId: kw1.id,
@@ -174,6 +180,7 @@ describe("GET /api/analytics/dashboard", () => {
       comments: 10,
       collectedAt: now,
       publishedAt: now,
+      extra: {},
     });
 
     const request = new Request("http://localhost/api/analytics/dashboard");

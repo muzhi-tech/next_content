@@ -8,11 +8,11 @@ import { getDB } from "./shared";
 
 export async function getApiConfigs(): Promise<ApiConfig[]> {
   const db = getDB();
-  return db.prepare("SELECT * FROM api_configs").all().map((r: Record<string, unknown>) => ({
-    ...r,
-    isDefault: !!r.isDefault,
-    isDefaultImage: !!r.isDefaultImage,
-    type: r.type || 'text',
+  return db.prepare("SELECT * FROM api_configs").all().map((r) => ({
+    ...(r as Record<string, unknown>),
+    isDefault: !!(r as Record<string, unknown>).isDefault,
+    isDefaultImage: !!(r as Record<string, unknown>).isDefaultImage,
+    type: ((r as Record<string, unknown>).type as string) || 'text',
   })) as unknown as ApiConfig[];
 }
 
@@ -90,7 +90,7 @@ export async function updateApiConfig(
     "UPDATE api_configs SET name=?, apiUrl=?, apiKey=?, modelName=?, type=?, isDefault=?, isDefaultImage=?, updatedAt=? WHERE id=?"
   ).run(name, apiUrl, apiKey, modelName, type, isDefault, isDefaultImage, updatedAt, id);
 
-  return { id, name, apiUrl, apiKey, modelName, type, isDefault: !!isDefault, isDefaultImage: !!isDefaultImage, createdAt: existing.createdAt as number, updatedAt };
+  return { id, name, apiUrl, apiKey, modelName, type: type as 'text' | 'image', isDefault: !!isDefault, isDefaultImage: !!isDefaultImage, createdAt: existing.createdAt as number, updatedAt };
 }
 
 export async function deleteApiConfig(id: string): Promise<boolean> {

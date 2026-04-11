@@ -11,13 +11,22 @@ interface AIConfig {
   modelName?: string;
 }
 
+export interface ScoreBreakdown {
+  happy: number;
+  knowledge: number;
+  resonance: number;
+  human_rhythm: number;
+  rule_check: number;
+}
+
 export interface ScoreResult {
   score: number;
   feedback: string;
   passed: boolean;
+  breakdown?: ScoreBreakdown;
 }
 
-const SCORE_THRESHOLD = 70;
+const SCORE_THRESHOLD = 80;
 
 const SCORE_SYSTEM_PROMPT = `你是一位深谙卡兹克（Khazix）爆款逻辑的内容质量评审专家。你需要对给定的公众号长文进行打分评估。
 
@@ -56,11 +65,12 @@ export async function scoreContent(
     },
   ]);
 
-  const result = parseJSON(raw) as { score: number; feedback: string };
+  const result = parseJSON(raw) as { score: number; feedback: string; breakdown?: ScoreBreakdown };
   const score = result.score || 0;
   return {
     score,
     feedback: result.feedback || "",
     passed: score >= SCORE_THRESHOLD,
+    breakdown: result.breakdown,
   };
 }

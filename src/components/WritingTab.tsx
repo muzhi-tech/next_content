@@ -77,12 +77,17 @@ export default function WritingTab({ categoryId }: Props) {
 
   // 管道状态
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStepInfo[]>([]);
-  const [pipelineStatus, setPipelineStatus] = useState<"idle" | "running" | "completed" | "failed">("idle");
+  const [pipelineStatus, setPipelineStatus] = useState<"idle" | "running" | "completed" | "failed" | "paused">("idle");
   const [pipelineId, setPipelineId] = useState("");
   const [pipelineError, setPipelineError] = useState("");
   const [pipelineMatchedPages, setPipelineMatchedPages] = useState<string[]>([]);
   const [showPipeline, setShowPipeline] = useState(false);
   const pipelineAbortRef = useRef<AbortController | null>(null);
+
+  // Human-in-the-loop: 选题确认
+  const [pausedTopic, setPausedTopic] = useState("");
+  const [editedTopic, setEditedTopic] = useState("");
+  const [approvingTopic, setApprovingTopic] = useState(false);
 
   const loadAccountSpace = async () => {
     try {

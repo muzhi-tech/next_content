@@ -419,10 +419,12 @@ async function executeWriteLoop(
   wikiMode?: "off" | "index-only" | "full-context",
   onEvent?: PipelineEventHandler,
 ): Promise<void> {
+  let lastScoreFeedback: string | undefined;
+
   for (let attempt = 0; attempt <= MAX_WRITE_RETRIES; attempt++) {
     try {
       const content = await withTimeout(
-        executeWrite(config, ctx.topic || "", articles, ctx.categoryId, useWiki, wikiMode, ctx),
+        executeWrite(config, ctx.topic || "", articles, ctx.categoryId, useWiki, wikiMode, ctx, lastScoreFeedback),
         STEP_TIMEOUT_MS, "write"
       );
       ctx.content = content;
@@ -457,6 +459,9 @@ async function executeWriteLoop(
       }
 
       emitEvent(onEvent, "step_failed", ctx.id, { step: "score", stepIndex: 3, error: scoreResult.feedback || "Score below threshold" });
+
+      // Store feedback for next rewrite attempt
+      lastScoreFeedback = scoreResult.feedback;
 
       if (attempt >= MAX_WRITE_RETRIES - 1) {
         ctx.status = "failed";
@@ -496,7 +501,7 @@ HKR质检法要求：
   return raw.trim();
 }
 
-async function executeWrite(config: AIConfig, topic: string, articles: Array<{ title: string; content: string; platform: string }>, categoryId: string, useWiki?: boolean, wikiMode?: "off" | "index-only" | "full-context", ctx?: PipelineContext): Promise<string> {
+async function executeWrite(config: AIConfig, topic: string, articles: Array<{ title: string; content: string; platform: string }>, categoryId: string, useWiki?: boolean, wikiMode?: "off" | "index-only" | "full-context", ctx?: PipelineContext, scoreFeedback?: string): Promise<string> {
   let wikiContext = '';
   let matchedPages: string[] = [];
 
@@ -548,6 +553,10 @@ async function executeWrite(config: AIConfig, topic: string, articles: Array<{ t
 
   if (wikiContext) {
     systemPrompt += `\n\n【Wiki知识库参考资料】\n你可以从以下知识库检索到的信息中提取论据或佐证，但请用你自己的卡兹克风格内化表达，绝不直接复制拼凑：\n\n${wikiContext}`;
+  }
+
+  if (scoreFeedback) {
+    systemPrompt += `\n\n【上轮评审反馈（必须针对改进）】\n上一轮写作未通过质量评审，以下是评审反馈。请针对反馈中指出的所有问题进行改进重写：\n${scoreFeedback}`;
   }
 
   const articlesContext = articles.slice(0, 5).map((a, i) => `[材料${i + 1}] 标题：${a.title}\n内容：${a.content.substring(0, 2000)}...`).join("\n\n");

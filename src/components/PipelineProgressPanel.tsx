@@ -24,7 +24,7 @@ export interface PipelineProgressPanelProps {
   pipelineId: string;
   steps: PipelineStepInfo[];
   currentStepIndex: number;
-  overallStatus: "idle" | "running" | "completed" | "failed";
+  overallStatus: "idle" | "running" | "completed" | "failed" | "paused";
   error?: string;
   matchedPages?: string[];
   onRetry?: () => void;
@@ -47,6 +47,7 @@ const STATUS_LABELS: Record<string, string> = {
   running: "运行中",
   completed: "已完成",
   failed: "失败",
+  paused: "等待确认",
 };
 
 function formatDuration(start?: string, end?: string): string | null {
@@ -106,7 +107,9 @@ export default function PipelineProgressPanel({
                   ? "bg-green-500/20 text-green-400"
                   : overallStatus === "failed"
                     ? "bg-red-500/20 text-red-400"
-                    : "bg-gray-600/30 text-gray-400"
+                    : overallStatus === "paused"
+                      ? "bg-amber-500/20 text-amber-400"
+                      : "bg-gray-600/30 text-gray-400"
             }`}
           >
             {STATUS_LABELS[overallStatus]}
@@ -121,7 +124,9 @@ export default function PipelineProgressPanel({
                   ? "bg-red-500"
                   : overallStatus === "completed"
                     ? "bg-green-500"
-                    : "bg-blue-500"
+                    : overallStatus === "paused"
+                      ? "bg-amber-500"
+                      : "bg-blue-500"
               }`}
               style={{ width: `${progressPercent}%` }}
             />

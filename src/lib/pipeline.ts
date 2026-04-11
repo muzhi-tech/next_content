@@ -24,6 +24,7 @@ import {
 } from "@/lib/db";
 import type { PipelineRun, PipelineStepResult, StyleProfile } from "@/lib/types";
 import { extractStyleProfile } from "./agents/style-extractor";
+import { generateIllustrations, type IllustrationResult } from "./agents/illustrate";
 
 export type PipelineStep = "collect" | "topic" | "write" | "score" | "humanize" | "review" | "illustrate" | "publish" | "microwriting" | "visualrender";
 
@@ -51,6 +52,8 @@ export interface PipelineContext {
   reviewRetryCount: number;     // 审核重试次数
   reviewIssues?: string[];      // 审核反馈问题
   styleProfile?: StyleProfile;  // 采集文章的风格基因
+  coverUrl?: string;              // 生成的封面图 URL
+  illustrations?: Array<{ label: string; url?: string; prompt: string }>;  // 插图
 }
 
 interface AIConfig {
@@ -357,21 +360,34 @@ export async function runPipeline(params: {
       }
     }
 
-    // Step 6: Illustrate
+    // Step 6: Illustrate (prompts + actual image generation via FAL)
     if (skipUntil <= 6) {
       checkTimeout();
       ctx.currentStep = "illustrate";
       emitEvent(onEvent, "step_start", ctx.id, { step: "illustrate", stepIndex: 6 });
       await persistStep(ctx.id, 6, { status: "running", startedAt: new Date().toISOString() });
       try {
-        const coverPrompt = await withTimeout(
-          executeIllustrate(params.apiConfig, ctx.topic || "", ctx.content || ""),
-          STEP_TIMEOUT_MS, "illustrate"
+        const illResult = await withTimeout(
+          generateIllustrations(params.apiConfig, ctx.topic || "", ctx.content || ""),
+          STEP_TIMEOUT_MS * 2, "illustrate"  // longer timeout for image generation
         );
-        ctx.coverPrompt = coverPrompt;
-        ctx.history.push(stepResult("illustrate", "success", { coverPrompt }));
-        await persistStep(ctx.id, 6, { status: "completed", output: coverPrompt, completedAt: new Date().toISOString() });
-        emitEvent(onEvent, "step_complete", ctx.id, { step: "illustrate", stepIndex: 6, data: { coverPrompt } });
+        ctx.coverPrompt = illResult.coverPrompt;
+        ctx.coverUrl = illResult.coverUrl;
+        ctx.illustrations = illResult.illustrations;
+        ctx.history.push(stepResult("illustrate", "success", {
+          coverPrompt: illResult.coverPrompt,
+          coverUrl: illResult.coverUrl,
+          illustrationCount: illResult.illustrations.length,
+        }));
+        await persistStep(ctx.id, 6, {
+          status: "completed",
+          output: JSON.stringify({ coverPrompt: illResult.coverPrompt, coverUrl: illResult.coverUrl, illustrations: illResult.illustrations }),
+          completedAt: new Date().toISOString()
+        });
+        emitEvent(onEvent, "step_complete", ctx.id, {
+          step: "illustrate", stepIndex: 6,
+          data: { coverPrompt: illResult.coverPrompt, coverUrl: illResult.coverUrl, illustrationCount: illResult.illustrations.length }
+        });
       } catch (error) {
         ctx.history.push(stepResult("illustrate", "failed", undefined, error instanceof Error ? error.message : String(error)));
         await persistStep(ctx.id, 6, { status: "completed", feedback: error instanceof Error ? error.message : String(error), completedAt: new Date().toISOString() });

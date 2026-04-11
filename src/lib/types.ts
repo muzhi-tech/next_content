@@ -385,3 +385,12 @@ export interface StickerPublishResponse {
  * Pipeline 类型（支持长文和贴图两种模式）
  */
 export type PipelineType = 'long-article' | 'sticker';
+
+/**
+ * 风格基因（从采集文章中提取的共性写作风格）
+ */
+export interface StyleProfile {
+  guidelines: string;   // 写作风格指导原则
+  samples: string;      // 风格样本
+  constraints: string;  // 风格约束
+}

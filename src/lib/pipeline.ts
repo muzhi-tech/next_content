@@ -22,7 +22,8 @@ import {
   createGeneratedContent,
   createStickerContent,
 } from "@/lib/db";
-import type { PipelineRun, PipelineStepResult } from "@/lib/types";
+import type { PipelineRun, PipelineStepResult, StyleProfile } from "@/lib/types";
+import { extractStyleProfile } from "./agents/style-extractor";
 
 export type PipelineStep = "collect" | "topic" | "write" | "score" | "humanize" | "review" | "illustrate" | "publish" | "microwriting" | "visualrender";
 
@@ -49,6 +50,7 @@ export interface PipelineContext {
   stickerData?: StickerOutput;  // 贴图模式输出
   reviewRetryCount: number;     // 审核重试次数
   reviewIssues?: string[];      // 审核反馈问题
+  styleProfile?: StyleProfile;  // 采集文章的风格基因
 }
 
 interface AIConfig {
@@ -262,6 +264,16 @@ export async function runPipeline(params: {
         await updatePipelineStatus(ctx.id, "failed", undefined, "No articles collected");
         emitEvent(onEvent, "pipeline_failed", ctx.id, { error: "No articles collected" });
         return ctx;
+      }
+
+      // Extract style profile from collected articles
+      try {
+        ctx.styleProfile = await withTimeout(
+          extractStyleProfile(params.apiConfig, collectedArticles),
+          STEP_TIMEOUT_MS, "style-extract"
+        );
+      } catch (e) {
+        console.warn("[pipeline] Style extraction failed, continuing without:", e);
       }
     } else {
       collectedArticles = await executeCollect(params.categoryId, params.keywordId);
@@ -618,6 +630,10 @@ async function executeWrite(config: AIConfig, topic: string, articles: Array<{ t
 
   if (scoreFeedback) {
     systemPrompt += `\n\n【上轮评审反馈（必须针对改进）】\n上一轮写作未通过质量评审，以下是评审反馈。请针对反馈中指出的所有问题进行改进重写：\n${scoreFeedback}`;
+  }
+
+  if (ctx?.styleProfile?.guidelines) {
+    systemPrompt += `\n\n【目标风格基因（从优质素材中提取）】\n- 风格指导：${ctx.styleProfile.guidelines}\n- 典型表达：${ctx.styleProfile.samples}\n- 风格约束：${ctx.styleProfile.constraints}`;
   }
 
   const articlesContext = articles.slice(0, 5).map((a, i) => `[材料${i + 1}] 标题：${a.title}\n内容：${a.content.substring(0, 2000)}...`).join("\n\n");

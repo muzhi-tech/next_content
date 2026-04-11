@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import type { TemplateId, ThemeConfig } from "./themes";
+import { TEMPLATES, type TemplateId, type ThemeConfig } from "./themes";
 
 /**
  * 贴纸数据结构（对齐 backend StickerContent 接口）
@@ -294,7 +294,6 @@ export function StickerTemplateRenderer({
   templateId: TemplateId;
   data: StickerData;
 }) {
-  const { TEMPLATES } = require("./themes");
   const theme = TEMPLATES[templateId];
 
   switch (templateId) {

@@ -36,15 +36,34 @@ interface StickerPublishRequest {
   author?: string;
 }
 
+/**
+ * HTML 转义，防止 XSS 攻击
+ */
+function escapeHtml(text: string): string {
+  const htmlEscapes: Record<string, string> = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  };
+  return text.replace(/[&<>"']/g, (char) => htmlEscapes[char] || char);
+}
+
 function buildStickerHtml(title: string, content: string, imageUrl?: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeContent = escapeHtml(content);
+
   let html = `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 675px; margin: 0 auto; padding: 20px 16px; background: #fff; box-sizing: border-box;">`;
 
   if (imageUrl) {
-    html += `<img src="${imageUrl}" style="width: 100%; max-width: 675px; border-radius: 8px; margin-bottom: 16px; display: block;" />`;
+    // Only add image if it's a valid URL
+    const safeUrl = escapeHtml(imageUrl);
+    html += `<img src="${safeUrl}" style="width: 100%; max-width: 675px; border-radius: 8px; margin-bottom: 16px; display: block;" />`;
   }
 
-  html += `<h2 style="font-size: 22px; font-weight: bold; color: #1a1a1a; margin: 0 0 12px 0; line-height: 1.4;">${title}</h2>`;
-  html += `<p style="font-size: 16px; color: #333; line-height: 1.8; margin: 0;">${content}</p>`;
+  html += `<h2 style="font-size: 22px; font-weight: bold; color: #1a1a1a; margin: 0 0 12px 0; line-height: 1.4;">${safeTitle}</h2>`;
+  html += `<p style="font-size: 16px; color: #333; line-height: 1.8; margin: 0;">${safeContent}</p>`;
   html += `</div>`;
 
   return html;

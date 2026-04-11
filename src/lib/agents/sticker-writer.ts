@@ -4,16 +4,12 @@
  */
 
 import { createChatCompletionJSON, parseJSON } from "@/lib/content-generator";
+import type { StickerSlide } from "@/lib/types";
 
 interface AIConfig {
   apiUrl?: string;
   apiKey?: string;
   modelName?: string;
-}
-
-export interface StickerSlide {
-  heading: string;   // 副标题
-  content: string;   // 一句话核心观点
 }
 
 export interface StickerOutput {
@@ -62,7 +58,18 @@ export async function generateStickerContent(
     },
   ]);
 
-  const result = parseJSON(raw) as StickerOutput;
+  let result: StickerOutput;
+  try {
+    result = parseJSON(raw) as StickerOutput;
+  } catch (parseError) {
+    // If JSON parsing fails, return a fallback structure
+    console.error("[sticker-writer] JSON parse error:", parseError);
+    return {
+      title: "未知标题",
+      slides: [],
+      caption: "",
+    };
+  }
 
   // Validate and sanitize output
   return {

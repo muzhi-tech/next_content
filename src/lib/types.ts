@@ -345,6 +345,22 @@ export interface StickerContent {
 }
 
 /**
+ * 贴图内容数据库记录
+ */
+export interface StickerContentRecord {
+  id: string;
+  title: string;
+  slides: StickerSlide[];  // JSON stored
+  caption: string;
+  status: 'draft' | 'published' | 'archived';
+  wxMediaId?: string;
+  wxUrl?: string;
+  categoryId?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
  * 贴图发布请求
  */
 export interface StickerPublishRequest {

@@ -20,6 +20,7 @@ import {
   updatePipelineRun,
   listPipelineRuns,
   createGeneratedContent,
+  createStickerContent,
 } from "@/lib/db";
 import type { PipelineRun, PipelineStepResult } from "@/lib/types";
 
@@ -722,18 +723,17 @@ async function runStickerPipeline(params: {
 }
 
 /**
- * Auto-save sticker output to generated_contents table as draft.
+ * Auto-save sticker output to sticker_contents table as draft.
  */
 async function saveStickerContentFromPipeline(ctx: PipelineContext): Promise<void> {
   if (!ctx.stickerData) return;
   try {
-    await createGeneratedContent({
+    await createStickerContent({
       categoryId: ctx.categoryId,
-      topic: ctx.stickerData.title,
-      content: JSON.stringify(ctx.stickerData),
+      title: ctx.stickerData.title,
+      slides: ctx.stickerData.slides,
+      caption: ctx.stickerData.caption,
       status: "draft",
-      sourceType: "sticker-pipeline",
-      coverPrompt: undefined,
     });
     console.log(`[pipeline] Auto-saved sticker content for pipeline ${ctx.id}`);
   } catch (err) {

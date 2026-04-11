@@ -9,7 +9,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import type { Keyword, Article, Platform, ApiConfig, Persona, Style, KnowledgeBase, WxTemplate, Category, Report, PipelineRun, PipelineStepResult, GeneratedContent, ContentStatus, ContentSourceType, CollectionLog, CollectionLogStatus } from "./types";
+import type { Keyword, Article, Platform, ApiConfig, Persona, Style, KnowledgeBase, WxTemplate, Category, Report, PipelineRun, PipelineStepResult, GeneratedContent, ContentStatus, ContentSourceType, CollectionLog, CollectionLogStatus, StickerContentRecord, StickerSlide } from "./types";
 
 const DB_PATH = path.join(process.cwd(), "data", "content.db");
 
@@ -177,6 +177,21 @@ function initSchema(db: Database.Database): void {
     );
     CREATE INDEX IF NOT EXISTS idx_cl_category ON collection_logs(categoryId);
     CREATE INDEX IF NOT EXISTS idx_cl_startedAt ON collection_logs(startedAt);
+
+    CREATE TABLE IF NOT EXISTS sticker_contents (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      slides TEXT NOT NULL DEFAULT '[]',
+      caption TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft',
+      wxMediaId TEXT DEFAULT '',
+      wxUrl TEXT DEFAULT '',
+      categoryId TEXT DEFAULT '',
+      createdAt INTEGER NOT NULL,
+      updatedAt INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sc_category ON sticker_contents(categoryId);
+    CREATE INDEX IF NOT EXISTS idx_sc_status ON sticker_contents(status);
   `);
 
   // Seed: ensure at least one default category exists
@@ -251,6 +266,9 @@ function rowToGeneratedContent(row: any): GeneratedContent {
 }
 function rowToCollectionLog(row: any): CollectionLog {
   return { ...row };
+}
+function rowToStickerContent(row: any): StickerContentRecord {
+  return { ...row, slides: JSON.parse(row.slides || '[]') };
 }
 
 // Test-only: reset singleton for fresh database per test
@@ -1123,4 +1141,98 @@ export async function getActivePipelineRun(): Promise<PipelineRun | null> {
     LIMIT 1
   `).get();
   return row ? rowToPipelineRun(row) : null;
+}
+
+// ============ 贴图内容（StickerContent）操作 ============
+
+export async function getStickerContents(options?: {
+  categoryId?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<{ items: StickerContentRecord[]; total: number }> {
+  const db = getDB();
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (options?.categoryId) {
+    conditions.push("categoryId = ?");
+    params.push(options.categoryId);
+  }
+  if (options?.status) {
+    conditions.push("status = ?");
+    params.push(options.status);
+  }
+
+  const where = conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
+  const total = (db.prepare(`SELECT COUNT(*) as count FROM sticker_contents ${where}`).get(params) as any).count;
+
+  const page = options?.page || 1;
+  const pageSize = options?.pageSize || 20;
+  const offset = (page - 1) * pageSize;
+
+  const rows = db.prepare(
+    `SELECT * FROM sticker_contents ${where} ORDER BY createdAt DESC LIMIT ? OFFSET ?`
+  ).all(...params, pageSize, offset);
+
+  return { items: rows.map(rowToStickerContent), total };
+}
+
+export async function getStickerContent(id: string): Promise<StickerContentRecord | null> {
+  const db = getDB();
+  const row = db.prepare("SELECT * FROM sticker_contents WHERE id = ?").get(id);
+  return row ? rowToStickerContent(row) : null;
+}
+
+export async function createStickerContent(data: {
+  title: string;
+  slides: StickerSlide[];
+  caption?: string;
+  status?: string;
+  categoryId?: string;
+}): Promise<StickerContentRecord> {
+  const db = getDB();
+  const id = generateId();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO sticker_contents (id, title, slides, caption, status, categoryId, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, data.title, JSON.stringify(data.slides), data.caption || '', data.status || 'draft', data.categoryId || '', now, now);
+  return { id, title: data.title, slides: data.slides, caption: data.caption || '', status: data.status || 'draft', categoryId: data.categoryId, createdAt: now, updatedAt: now };
+}
+
+export async function updateStickerContent(
+  id: string,
+  data: Partial<{
+    title: string;
+    slides: StickerSlide[];
+    caption: string;
+    status: string;
+    wxMediaId: string;
+    wxUrl: string;
+  }>
+): Promise<StickerContentRecord | null> {
+  const db = getDB();
+  const existing = db.prepare("SELECT * FROM sticker_contents WHERE id = ?").get(id) as any;
+  if (!existing) return null;
+
+  const updatedAt = Date.now();
+  const title = data.title !== undefined ? data.title : existing.title;
+  const slides = data.slides !== undefined ? JSON.stringify(data.slides) : existing.slides;
+  const caption = data.caption !== undefined ? data.caption : existing.caption;
+  const status = data.status !== undefined ? data.status : existing.status;
+  const wxMediaId = data.wxMediaId !== undefined ? data.wxMediaId : existing.wxMediaId;
+  const wxUrl = data.wxUrl !== undefined ? data.wxUrl : existing.wxUrl;
+
+  db.prepare(
+    "UPDATE sticker_contents SET title=?, slides=?, caption=?, status=?, wxMediaId=?, wxUrl=?, updatedAt=? WHERE id=?"
+  ).run(title, slides, caption, status, wxMediaId, wxUrl, updatedAt, id);
+
+  return rowToStickerContent({ ...existing, title, slides, caption, status, wxMediaId, wxUrl, updatedAt });
+}
+
+export async function deleteStickerContent(id: string): Promise<boolean> {
+  const db = getDB();
+  const result = db.prepare("DELETE FROM sticker_contents WHERE id = ?").run(id);
+  return result.changes > 0;
 }

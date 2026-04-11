@@ -6,6 +6,7 @@ import { techStyle } from "./tech";
 import { businessStyle } from "./business";
 import { lifestyleStyle } from "./lifestyle";
 import { newsStyle } from "./news";
+import { essayStyle } from "./essay";
 
 export interface WritingStyle {
   id: string;
@@ -20,6 +21,7 @@ export const STYLES: Record<string, WritingStyle> = {
   business: businessStyle,
   lifestyle: lifestyleStyle,
   news: newsStyle,
+  essay: essayStyle,
 };
 
 export const STYLE_LIST = Object.values(STYLES);
@@ -62,4 +64,4 @@ export function buildUserPrompt(
   return prompt;
 }
 
-export { techStyle, businessStyle, lifestyleStyle, newsStyle };
+export { techStyle, businessStyle, lifestyleStyle, newsStyle, essayStyle };
